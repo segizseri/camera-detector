@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}NVR / Cameras Setup{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto bg-gray-800 p-8 rounded-lg shadow-xl border border-gray-700">
+    <h2 class="text-2xl font-bold mb-6 flex items-center gap-3">
+        <i class="fas fa-network-wired text-blue-500"></i> Import Cameras from NVR
+    </h2>
+    <form id="nvr-form" class="space-y-6">
+        <div class="grid grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-400">NVR IP Address</label>
+                <input type="text" name="nvr_ip"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    value="192.168.1.100" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400">RTSP Port</label>
+                <input type="number" name="nvr_rtsp_port" value="554"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400">Username</label>
+                <input type="text" name="username"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    value="admin" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400">Password</label>
+                <input type="password" name="password"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400">Channel Count</label>
+                <input type="number" name="channels_count" value="16"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400">Profile</label>
+                <select name="stream_profile"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    <option value="substream" selected>Substream (Low Res)</option>
+                    <option value="mainstream">Mainstream (High Res)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400">Brand</label>
+                <select name="brand_preset"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    <option value="hikvision" selected>Hikvision</option>
+                    <option value="generic">Generic/Dahua</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400">RTSP Transport</label>
+                <select name="rtsp_transport"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    <option value="tcp" selected>TCP (Stable)</option>
+                    <option value="udp">UDP</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4 mt-6">
+            <button type="button" id="btn-test"
+                class="bg-gray-600 hover:bg-gray-500 text-white py-2 px-6 rounded shadow font-medium transition-colors">
+                <i class="fas fa-plug"></i> Test Connection
+            </button>
+            <button type="submit"
+                class="bg-blue-600 hover:bg-blue-500 text-white py-2 px-6 rounded shadow font-medium transition-colors">
+                <i class="fas fa-download"></i> Import Cameras
+            </button>
+        </div>
+        <div id="status-msg" class="mt-4 text-sm"></div>
+    </form>
+</div>
+
+<script>
+    document.getElementById('btn-test').addEventListener('click', async () => {
+        const formData = new FormData(document.getElementById('nvr-form'));
+        const data = Object.fromEntries(formData);
+        data.nvr_rtsp_port = parseInt(data.nvr_rtsp_port);
+        data.channels_count = parseInt(data.channels_count);
+        document.getElementById('status-msg').innerHTML = "<span class='text-yellow-400'><i class='fas fa-spinner fa-spin'></i> Testing connection...</span>";
+
+        try {
+            const res = await fetch('/api/nvr/test-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const out = await res.json();
+            document.getElementById('status-msg').innerHTML = `<span class='text-green-400'><i class='fas fa-check'></i> ${out.status}: ${out.message}</span>`;
+        } catch (e) {
+            document.getElementById('status-msg').innerHTML = `<span class='text-red-400'><i class='fas fa-times'></i> Error testing connection: ${e}</span>`;
+        }
+    });
+
+    document.getElementById('nvr-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData);
+        data.nvr_rtsp_port = parseInt(data.nvr_rtsp_port);
+        data.channels_count = parseInt(data.channels_count);
+        document.getElementById('status-msg').innerHTML = "<span class='text-blue-400'><i class='fas fa-spinner fa-spin'></i> Importing cameras...</span>";
+
+        try {
+            const res = await fetch('/api/nvr/import-cameras', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const out = await res.json();
+            document.getElementById('status-msg').innerHTML = `<span class='text-green-400'><i class='fas fa-check'></i> Successfully imported ${out.imported_count} cameras. Redirecting...</span>`;
+            setTimeout(() => { window.location.href = '/cameras'; }, 1500);
+        } catch (e) {
+            document.getElementById('status-msg').innerHTML = `<span class='text-red-400'><i class='fas fa-times'></i> Import failed: ${e}</span>`;
+        }
+    });
+</script>
+{% endblock %}

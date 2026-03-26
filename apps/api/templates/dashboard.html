@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Laptop AI Box{% endblock %}
+{% block content %}
+<h1 class="text-3xl font-bold mb-6">Dashboard Summary</h1>
+
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+    <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-green-500 shadow-lg">
+        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Online Cameras</h2>
+        <div class="text-4xl font-bold mt-2" id="online-count">-</div>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-red-500 shadow-lg">
+        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Offline Cameras</h2>
+        <div class="text-4xl font-bold mt-2" id="offline-count">-</div>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-yellow-500 shadow-lg">
+        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Events (24h)</h2>
+        <div class="text-4xl font-bold mt-2" id="events-count">-</div>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-blue-500 shadow-lg">
+        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">System Load</h2>
+        <div class="text-xl font-bold mt-2" id="sys-load">CPU: <span class="text-green-400">Low</span></div>
+    </div>
+</div>
+
+<div class="mt-8 bg-gray-800 p-6 rounded-lg shadow-lg">
+    <h2 class="text-xl font-bold mb-4">Recent Alerts</h2>
+    <div id="recent-alerts" class="text-gray-400 italic">No recent alerts found.</div>
+</div>
+
+<script>
+    // Fetch dashboard stats dynamically
+    async function fetchStats() {
+        const cams = await fetch('/api/cameras').then(r => r.json());
+        const online = cams.filter(c => c.status === 'online').length;
+        document.getElementById('online-count').innerText = online;
+        document.getElementById('offline-count').innerText = cams.length - online;
+
+        const evts = await fetch('/api/events').then(r => r.json());
+        document.getElementById('events-count').innerText = evts.length;
+
+        if (evts.length > 0) {
+            document.getElementById('recent-alerts').innerHTML = evts.slice(0, 5).map(e => `
+                <div class="border-b border-gray-700 py-2 flex justify-between">
+                    <span>${e.event_type} on Camera: ${e.camera_id}</span>
+                    <span class="text-xs text-gray-500">${new Date(e.timestamp).toLocaleString()}</span>
+                </div>
+            `).join('');
+        }
+    }
+
+    fetchStats();
+    setInterval(fetchStats, 10000);
+</script>
+{% endblock %}

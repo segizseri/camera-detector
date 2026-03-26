@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Cameras | Laptop AI Box{% endblock %}
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold">Camera Management</h1>
+    <div class="space-x-2">
+        <button id="btn-test-all" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded shadow text-sm">
+            <i class="fas fa-stethoscope text-blue-400"></i> Test All RTSP
+        </button>
+    </div>
+</div>
+
+<div id="cameras-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+    <!-- Cameras will be injected via JS -->
+    <div class="col-span-full text-center text-gray-500 py-12">
+        <i class="fas fa-spinner fa-spin text-3xl mb-4"></i>
+        <p>Loading cameras...</p>
+    </div>
+</div>
+
+<script>
+    async function loadCameras() {
+        const grid = document.getElementById('cameras-grid');
+        try {
+            const res = await fetch('/api/cameras');
+            const cameras = await res.json();
+
+            if (cameras.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full bg-gray-800 p-8 rounded-lg text-center shadow-lg border border-gray-700">
+                        <i class="fas fa-video-slash text-4xl text-gray-500 mb-4"></i>
+                        <h3 class="text-xl font-medium mb-2">No cameras found</h3>
+                        <p class="text-gray-400 mb-4">You need to import cameras from an NVR first.</p>
+                        <a href="/nvr" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded inline-block">Go to NVR Setup</a>
+                    </div>
+                `;
+                return;
+            }
+
+            grid.innerHTML = cameras.map(cam => `
+                <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg border border-gray-700 hover:border-blue-500 transition-colors" id="cam-${cam.id}">
+                    <div class="bg-gray-900 aspect-video flex items-center justify-center relative cursor-pointer group" onclick="window.location.href='/cameras/${cam.id}'">
+                        <i class="fas fa-play-circle text-4xl text-gray-600 group-hover:text-blue-500 transition-colors"></i>
+                        <div class="absolute top-2 right-2 flex gap-2">
+                            ${cam.ai_enabled ? '<span class="bg-purple-600 text-xs px-2 py-1 rounded" title="AI Enabled"><i class="fas fa-brain"></i></span>' : ''}
+                            <span class="${cam.status === 'online' ? 'bg-green-600' : (cam.status === 'error' ? 'bg-red-600' : 'bg-gray-600')} text-xs px-2 py-1 rounded" id="status-${cam.id}">
+                                ${cam.status.toUpperCase()}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="text-lg font-bold truncate" title="${cam.name}">${cam.name}</h3>
+                        <p class="text-xs text-gray-400 mt-1 truncate font-mono">CH: ${cam.channel} | FPS: ${cam.fps_limit}</p>
+                        <div class="mt-4 flex gap-2">
+                            <button onclick="testRTSP('${cam.id}')" class="flex-1 bg-gray-700 hover:bg-gray-600 text-xs py-2 rounded transition-colors text-center" id="btn-test-${cam.id}">
+                                <i class="fas fa-vial"></i> Test RTSP
+                            </button>
+                            <a href="/cameras/${cam.id}" class="flex-1 bg-blue-600 hover:bg-blue-500 text-xs py-2 rounded transition-colors text-center inline-block">
+                                <i class="fas fa-cog"></i> Manage
+                            </a>
+                        </div>
+                        <div id="test-res-${cam.id}" class="text-xs mt-2 text-center hidden"></div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            grid.innerHTML = `<div class="col-span-full text-red-500 py-12 text-center">Failed to load cameras: ${e}</div>`;
+        }
+    }
+
+    async function testRTSP(id) {
+        const btn = document.getElementById(`btn-test-${id}`);
+        const resDiv = document.getElementById(`test-res-${id}`);
+        const statusBadge = document.getElementById(`status-${id}`);
+
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        resDiv.classList.remove('hidden');
+        resDiv.innerHTML = 'Testing...';
+
+        try {
+            const res = await fetch(`/api/cameras/${id}/test-rtsp`, { method: 'POST' });
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                resDiv.innerHTML = `<span class="text-green-400">OK (${data.latency_ms.toFixed(0)} ms)</span>`;
+                statusBadge.className = "bg-green-600 text-xs px-2 py-1 rounded";
+                statusBadge.innerText = "ONLINE";
+            } else {
+                resDiv.innerHTML = `<span class="text-red-400">Error: ${data.error || 'timeout'}</span>`;
+                statusBadge.className = "bg-red-600 text-xs px-2 py-1 rounded";
+                statusBadge.innerText = "ERROR";
+            }
+        } catch (e) {
+            resDiv.innerHTML = `<span class="text-red-400">Failed: ${e.message}</span>`;
+            statusBadge.className = "bg-red-600 text-xs px-2 py-1 rounded";
+            statusBadge.innerText = "ERROR";
+        }
+        btn.innerHTML = '<i class="fas fa-vial"></i> Test RTSP';
+    }
+
+    document.getElementById('btn-test-all').addEventListener('click', async () => {
+        const reqs = await fetch('/api/cameras').then(r => r.json());
+        for (const c of reqs) {
+            testRTSP(c.id);
+            await new Promise(r => setTimeout(r, 500)); // Stagger tests
+        }
+    });
+
+    loadCameras();
+</script>
+{% endblock %}

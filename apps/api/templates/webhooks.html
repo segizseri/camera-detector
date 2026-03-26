@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Webhooks | Laptop AI Box{% endblock %}
+{% block content %}
+<h1 class="text-3xl font-bold mb-6">Webhook Integrations</h1>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
+        <h2 class="text-xl font-bold mb-4">Configured Webhooks</h2>
+        <div id="webhooks-list" class="space-y-4"></div>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700 h-fit">
+        <h2 class="text-xl font-bold mb-4">Add New Webhook</h2>
+        <form id="webhook-form" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-400">Name</label>
+                <input type="text" id="wh-name"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
+                    required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400">URL</label>
+                <input type="url" id="wh-url"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
+                    placeholder="https://..." required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-400">Secret (for HMAC signature)</label>
+                <input type="text" id="wh-secret"
+                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
+                    required>
+            </div>
+            <button type="submit"
+                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded shadow transition">Add
+                Webhook</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    async function loadWebhooks() {
+        const res = await fetch('/api/webhooks');
+        const hooks = await res.json();
+
+        const list = document.getElementById('webhooks-list');
+        if (hooks.length === 0) {
+            list.innerHTML = '<p class="text-gray-500 text-center">No webhooks configured.</p>';
+            return;
+        }
+
+        list.innerHTML = hooks.map(h => `
+            <div class="bg-gray-900 border border-gray-700 p-4 rounded flex justify-between items-center group">
+                <div>
+                    <h3 class="font-bold text-gray-200">${h.name}</h3>
+                    <p class="text-xs text-gray-400 truncate w-48">${h.url}</p>
+                    <span class="${h.enabled ? 'text-green-500' : 'text-gray-500'} text-xs bg-gray-800 px-2 py-0.5 rounded mt-1 inline-block">${h.enabled ? 'ACTIVE' : 'DISABLED'}</span>
+                </div>
+                <button onclick="deleteWebhook('${h.id}')" class="text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"><i class="fas fa-trash"></i></button>
+            </div>
+        `).join('');
+    }
+
+    async function deleteWebhook(id) {
+        if (!confirm('Delete webhook?')) return;
+        await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
+        loadWebhooks();
+    }
+
+    document.getElementById('webhook-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const data = {
+            name: document.getElementById('wh-name').value,
+            url: document.getElementById('wh-url').value,
+            secret: document.getElementById('wh-secret').value,
+            enabled: true
+        };
+        await fetch('/api/webhooks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        e.target.reset();
+        loadWebhooks();
+    });
+
+    loadWebhooks();
+</script>
+{% endblock %}

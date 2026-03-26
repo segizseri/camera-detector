@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Events History | Laptop AI Box{% endblock %}
+{% block content %}
+<h1 class="text-3xl font-bold mb-6">Event History</h1>
+
+<div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
+    <div id="events-list" class="space-y-4">
+        <div class="text-center text-gray-500 py-12"><i class="fas fa-spinner fa-spin text-3xl mb-4"></i> Loading
+            events...</div>
+    </div>
+</div>
+
+<script>
+    async function loadEvents() {
+        try {
+            const res = await fetch('/api/events');
+            const events = await res.json();
+
+            const list = document.getElementById('events-list');
+            if (events.length === 0) {
+                list.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-4"></i><p>No events found yet.</p></div>';
+                return;
+            }
+
+            list.innerHTML = events.map(e => `
+                <div class="flex items-start bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-gray-500 transition-colors">
+                    <div class="w-12 h-12 flex-shrink-0 bg-gray-800 rounded flex items-center justify-center mr-4">
+                        ${e.event_type.includes('person') ? '<i class="fas fa-user-friends text-blue-500 text-xl"></i>' :
+                    e.event_type.includes('fight') ? '<i class="fas fa-exclamation-triangle text-red-500 text-xl"></i>' :
+                        '<i class="fas fa-video-slash text-yellow-500 text-xl"></i>'}
+                    </div>
+                    <div class="flex-grow">
+                        <div class="flex justify-between items-center mb-1">
+                            <h3 class="text-lg font-bold text-gray-200 capitalize">${e.event_type.replace(/_/g, ' ')}</h3>
+                            <span class="text-xs text-gray-500">${new Date(e.timestamp).toLocaleString()}</span>
+                        </div>
+                        <p class="text-sm text-gray-400">Camera: ${e.camera_id}</p>
+                        ${e.confidence ? `<p class="text-xs mt-2 text-gray-500 font-mono">Confidence: ${(e.confidence * 100).toFixed(1)}%</p>` : ''}
+                        
+                        ${e.snapshot_path ? `
+                            <div class="mt-4 break-words text-xs gap-2 flex items-center">
+                                <a href="${e.snapshot_path}" target="_blank" class="px-3 py-1 bg-blue-600/30 hover:bg-blue-600 text-blue-300 rounded"><i class="fas fa-image"></i> View Snapshot</a>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            document.getElementById('events-list').innerHTML = `<div class="text-red-500 py-8 text-center">Failed to load events: ${e}</div>`;
+        }
+    }
+    loadEvents();
+</script>
+{% endblock %}

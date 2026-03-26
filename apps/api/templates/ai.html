@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}AI Monitoring | Laptop AI Box{% endblock %}
+{% block content %}
+<h1 class="text-3xl font-bold mb-6">AI Worker Monitoring</h1>
+<div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
+    <p class="text-gray-400 italic mb-4">View the status of the local AI inference engine and current detections.</p>
+
+    <div class="overflow-x-auto">
+        <table class="w-full text-left table-auto">
+            <thead class="bg-gray-900 border-b border-gray-700">
+                <tr>
+                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Camera</th>
+                    <th class="px-4 py-3 text-sm font-medium text-gray-300">AI Enabled</th>
+                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Target FPS</th>
+                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Status</th>
+                </tr>
+            </thead>
+            <tbody id="ai-table" class="divide-y divide-gray-700">
+                <tr>
+                    <td colspan="4" class="text-center py-4 text-gray-500">Loading AI status...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    async function loadAI() {
+        const res = await fetch('/api/cameras');
+        const cams = await res.json();
+
+        const table = document.getElementById('ai-table');
+        if (cams.length === 0) {
+            table.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">No cameras configured</td></tr>';
+            return;
+        }
+
+        table.innerHTML = cams.map(cam => `
+            <tr class="hover:bg-gray-700/50">
+                <td class="px-4 py-3 text-white font-medium">${cam.name} <span class="text-xs text-gray-500 ml-2">CH: ${cam.channel}</span></td>
+                <td class="px-4 py-3">
+                    ${cam.ai_enabled
+                ? '<span class="text-green-400 bg-green-900/40 px-2 py-1 rounded text-xs"><i class="fas fa-check"></i> Enabled</span>'
+                : '<span class="text-gray-500 bg-gray-900 px-2 py-1 rounded text-xs"><i class="fas fa-times"></i> Disabled</span>'}
+                </td>
+                <td class="px-4 py-3 text-gray-300 font-mono">${cam.fps_limit} fps</td>
+                <td class="px-4 py-3">
+                    <span class="text-blue-400 bg-blue-900/40 px-2 py-1 rounded text-xs">Waiting for worker...</span>
+                </td>
+            </tr>
+        `).join('');
+    }
+    loadAI();
+</script>
+{% endblock %}
