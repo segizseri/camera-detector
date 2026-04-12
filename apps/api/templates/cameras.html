@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Cameras | Laptop AI Box{% endblock %}
+{% block title %}Камеры | Laptop AI Box{% endblock %}
 {% block content %}
 <div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold">Camera Management</h1>
+    <h1 class="text-3xl font-bold">Управление камерами</h1>
     <div class="space-x-2">
         <button id="btn-test-all" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded shadow text-sm">
-            <i class="fas fa-stethoscope text-blue-400"></i> Test All RTSP
+            <i class="fas fa-stethoscope text-blue-400"></i> Проверить все RTSP
         </button>
     </div>
 </div>
@@ -14,7 +14,7 @@
     <!-- Cameras will be injected via JS -->
     <div class="col-span-full text-center text-gray-500 py-12">
         <i class="fas fa-spinner fa-spin text-3xl mb-4"></i>
-        <p>Loading cameras...</p>
+        <p>Загрузка камер...</p>
     </div>
 </div>
 
@@ -29,9 +29,9 @@
                 grid.innerHTML = `
                     <div class="col-span-full bg-gray-800 p-8 rounded-lg text-center shadow-lg border border-gray-700">
                         <i class="fas fa-video-slash text-4xl text-gray-500 mb-4"></i>
-                        <h3 class="text-xl font-medium mb-2">No cameras found</h3>
-                        <p class="text-gray-400 mb-4">You need to import cameras from an NVR first.</p>
-                        <a href="/nvr" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded inline-block">Go to NVR Setup</a>
+                        <h3 class="text-xl font-medium mb-2">Камеры не найдены</h3>
+                        <p class="text-gray-400 mb-4">Сначала нужно импортировать камеры из NVR.</p>
+                        <a href="/nvr" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded inline-block">Перейти к настройке NVR</a>
                     </div>
                 `;
                 return;
@@ -42,7 +42,7 @@
                     <div class="bg-gray-900 aspect-video flex items-center justify-center relative cursor-pointer group" onclick="window.location.href='/cameras/${cam.id}'">
                         <i class="fas fa-play-circle text-4xl text-gray-600 group-hover:text-blue-500 transition-colors"></i>
                         <div class="absolute top-2 right-2 flex gap-2">
-                            ${cam.ai_enabled ? '<span class="bg-purple-600 text-xs px-2 py-1 rounded" title="AI Enabled"><i class="fas fa-brain"></i></span>' : ''}
+                            ${cam.ai_enabled ? '<span class="bg-purple-600 text-xs px-2 py-1 rounded" title="ИИ включен"><i class="fas fa-brain"></i></span>' : ''}
                             <span class="${cam.status === 'online' ? 'bg-green-600' : (cam.status === 'error' ? 'bg-red-600' : 'bg-gray-600')} text-xs px-2 py-1 rounded" id="status-${cam.id}">
                                 ${cam.status.toUpperCase()}
                             </span>
@@ -53,18 +53,21 @@
                         <p class="text-xs text-gray-400 mt-1 truncate font-mono">CH: ${cam.channel} | FPS: ${cam.fps_limit}</p>
                         <div class="mt-4 flex gap-2">
                             <button onclick="testRTSP('${cam.id}')" class="flex-1 bg-gray-700 hover:bg-gray-600 text-xs py-2 rounded transition-colors text-center" id="btn-test-${cam.id}">
-                                <i class="fas fa-vial"></i> Test RTSP
+                                <i class="fas fa-vial"></i> Проверить RTSP
                             </button>
                             <a href="/cameras/${cam.id}" class="flex-1 bg-blue-600 hover:bg-blue-500 text-xs py-2 rounded transition-colors text-center inline-block">
-                                <i class="fas fa-cog"></i> Manage
+                                <i class="fas fa-cog"></i> Управление
                             </a>
+                            <button onclick="confirmDelete('${cam.id}', '${cam.name.replace(/'/g, "\\'")}')" class="bg-red-600 hover:bg-red-500 text-xs px-3 py-2 rounded transition-colors text-center text-white" title="Удалить камеру">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </div>
                         <div id="test-res-${cam.id}" class="text-xs mt-2 text-center hidden"></div>
                     </div>
                 </div>
             `).join('');
         } catch (e) {
-            grid.innerHTML = `<div class="col-span-full text-red-500 py-12 text-center">Failed to load cameras: ${e}</div>`;
+            grid.innerHTML = `<div class="col-span-full text-red-500 py-12 text-center">Не удалось загрузить камеры: ${e}</div>`;
         }
     }
 
@@ -75,27 +78,27 @@
 
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         resDiv.classList.remove('hidden');
-        resDiv.innerHTML = 'Testing...';
+        resDiv.innerHTML = 'Проверка...';
 
         try {
             const res = await fetch(`/api/cameras/${id}/test-rtsp`, { method: 'POST' });
             const data = await res.json();
 
             if (data.status === 'success') {
-                resDiv.innerHTML = `<span class="text-green-400">OK (${data.latency_ms.toFixed(0)} ms)</span>`;
+                resDiv.innerHTML = `<span class="text-green-400">OK (${data.latency_ms.toFixed(0)} мс)</span>`;
                 statusBadge.className = "bg-green-600 text-xs px-2 py-1 rounded";
-                statusBadge.innerText = "ONLINE";
+                statusBadge.innerText = "ОНЛАЙН";
             } else {
-                resDiv.innerHTML = `<span class="text-red-400">Error: ${data.error || 'timeout'}</span>`;
+                resDiv.innerHTML = `<span class="text-red-400">Ошибка: ${data.error || 'таймаут'}</span>`;
                 statusBadge.className = "bg-red-600 text-xs px-2 py-1 rounded";
-                statusBadge.innerText = "ERROR";
+                statusBadge.innerText = "ОШИБКА";
             }
         } catch (e) {
-            resDiv.innerHTML = `<span class="text-red-400">Failed: ${e.message}</span>`;
+            resDiv.innerHTML = `<span class="text-red-400">Не удалось: ${e.message}</span>`;
             statusBadge.className = "bg-red-600 text-xs px-2 py-1 rounded";
-            statusBadge.innerText = "ERROR";
+            statusBadge.innerText = "ОШИБКА";
         }
-        btn.innerHTML = '<i class="fas fa-vial"></i> Test RTSP';
+        btn.innerHTML = '<i class="fas fa-vial"></i> Проверить RTSP';
     }
 
     document.getElementById('btn-test-all').addEventListener('click', async () => {
@@ -106,6 +109,61 @@
         }
     });
 
+    // Delete Modal Logic
+    let deleteTargetId = null;
+
+    function confirmDelete(id, name) {
+        deleteTargetId = id;
+        document.getElementById('delete-cam-name').innerText = name;
+        document.getElementById('delete-modal').classList.remove('hidden');
+    }
+
+    function closeDeleteModal() {
+        deleteTargetId = null;
+        document.getElementById('delete-modal').classList.add('hidden');
+    }
+
+    async function performDelete() {
+        if (!deleteTargetId) return;
+        
+        const btn = document.getElementById('btn-confirm-delete');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Удаление...';
+        btn.disabled = true;
+        
+        try {
+            const res = await fetch(`/api/cameras/${deleteTargetId}`, { method: 'DELETE' });
+            if (res.ok) {
+                closeDeleteModal();
+                loadCameras();
+            } else {
+                alert('Ошибка удаления камеры');
+            }
+        } catch (e) {
+            alert('Сетевая ошибка: ' + e);
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+
     loadCameras();
 </script>
+
+<!-- Delete Confirmation Modal -->
+<div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center backdrop-blur-sm transition-opacity">
+    <div class="bg-gray-800 rounded-xl shadow-2xl p-6 max-w-sm w-full border border-gray-700 mx-4">
+        <div class="text-center mb-6">
+            <div class="w-16 h-16 rounded-full bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-exclamation-triangle text-3xl text-red-500"></i>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">Удаление камеры</h3>
+            <p class="text-gray-400 text-sm">Вы уверены, что хотите удалить камеру <span id="delete-cam-name" class="font-bold text-white"></span>? Это действие нельзя будет отменить.</p>
+        </div>
+        <div class="flex gap-3">
+            <button onclick="closeDeleteModal()" class="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors text-sm font-medium">Отмена</button>
+            <button id="btn-confirm-delete" onclick="performDelete()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded transition-colors text-sm font-medium">Удалить</button>
+        </div>
+    </div>
+</div>
 {% endblock %}

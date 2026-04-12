@@ -53,3 +53,11 @@ def delete_webhook(webhook_id: str, db: Session = Depends(get_db)):
     db.delete(wh)
     db.commit()
     return {"status": "success"}
+@router.post("/{webhook_id}/test")
+def test_webhook(webhook_id: str):
+    from libs.webhooks import send_test_webhook
+    status_code = send_test_webhook(webhook_id)
+    if status_code and status_code < 400:
+        return {"status": "success", "http_code": status_code}
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to send test webhook. Server returned {status_code}")

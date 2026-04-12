@@ -5,20 +5,18 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from libs.database import engine, Base
 from libs.models import Camera, Event, Webhook
-from apps.api.routers import nvr, cameras, events, webhooks
+from apps.api.routers import nvr, cameras, events, webhooks, settings
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Laptop AI Box MVP")
+app = FastAPI(title="Camera Detector AI Box")
 
-# Check if static dirs exist, if not, wait for them
 os.makedirs("data/media/hls", exist_ok=True)
 os.makedirs("data/media/snapshots", exist_ok=True)
 os.makedirs("data/media/clips", exist_ok=True)
 
-app.mount("/media/hls", StaticFiles(directory="data/media/hls"), name="hls")
-app.mount("/media/snapshots", StaticFiles(directory="data/media/snapshots"), name="snapshots")
-app.mount("/media/clips", StaticFiles(directory="data/media/clips"), name="clips")
+app.mount("/static", StaticFiles(directory="apps/api/static"), name="static")
+app.mount("/media", StaticFiles(directory="data/media"), name="media")
 
 templates = Jinja2Templates(directory="apps/api/templates")
 
@@ -26,6 +24,7 @@ app.include_router(nvr.router, prefix="/api/nvr", tags=["NVR"])
 app.include_router(cameras.router, prefix="/api/cameras", tags=["Cameras"])
 app.include_router(events.router, prefix="/api/events", tags=["Events"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
+app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):

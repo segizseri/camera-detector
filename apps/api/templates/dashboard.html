@@ -1,33 +1,33 @@
 {% extends "base.html" %}
-{% block title %}Dashboard | Laptop AI Box{% endblock %}
+{% block title %}Главная | Laptop AI Box{% endblock %}
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Dashboard Summary</h1>
+<h1 class="text-3xl font-bold mb-6">Сводка панели управления</h1>
 
 <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
     <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-green-500 shadow-lg">
-        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Online Cameras</h2>
+        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Камеры онлайн</h2>
         <div class="text-4xl font-bold mt-2" id="online-count">-</div>
     </div>
 
     <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-red-500 shadow-lg">
-        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Offline Cameras</h2>
+        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Камеры оффлайн</h2>
         <div class="text-4xl font-bold mt-2" id="offline-count">-</div>
     </div>
 
     <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-yellow-500 shadow-lg">
-        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Events (24h)</h2>
+        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">События (24ч)</h2>
         <div class="text-4xl font-bold mt-2" id="events-count">-</div>
     </div>
 
     <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-blue-500 shadow-lg">
-        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">System Load</h2>
-        <div class="text-xl font-bold mt-2" id="sys-load">CPU: <span class="text-green-400">Low</span></div>
+        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Нагрузка системы</h2>
+        <div class="text-xl font-bold mt-2" id="sys-load">CPU: <span class="text-green-400">Низкая</span></div>
     </div>
 </div>
 
 <div class="mt-8 bg-gray-800 p-6 rounded-lg shadow-lg">
-    <h2 class="text-xl font-bold mb-4">Recent Alerts</h2>
-    <div id="recent-alerts" class="text-gray-400 italic">No recent alerts found.</div>
+    <h2 class="text-xl font-bold mb-4">Последние уведомления</h2>
+    <div id="recent-alerts" class="text-gray-400 italic">Нет недавних уведомлений.</div>
 </div>
 
 <script>
@@ -41,13 +41,25 @@
         const evts = await fetch('/api/events').then(r => r.json());
         document.getElementById('events-count').innerText = evts.length;
 
+        const eventMapping = {
+            'person_detected': 'Обнаружен человек',
+            'fight_suspected': 'Подозрение на драку',
+            'theft_suspected': 'Подозрение на кражу',
+            'camera_offline': 'Камера отключена'
+        };
+
         if (evts.length > 0) {
-            document.getElementById('recent-alerts').innerHTML = evts.slice(0, 5).map(e => `
-                <div class="border-b border-gray-700 py-2 flex justify-between">
-                    <span>${e.event_type} on Camera: ${e.camera_id}</span>
-                    <span class="text-xs text-gray-500">${new Date(e.timestamp).toLocaleString()}</span>
+            document.getElementById('recent-alerts').innerHTML = evts.slice(0, 5).map(e => {
+                const displayName = eventMapping[e.event_type] || e.event_type;
+                return `
+                <div class="border-b border-gray-700 py-2 flex justify-between items-center">
+                    <span>${displayName} на камере: ${e.camera_id}</span>
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs text-gray-500">${new Date(e.timestamp).toLocaleString()}</span>
+                        ${e.snapshot_path ? `<a href="/media/snapshots/${e.snapshot_path}" target="_blank" class="text-blue-400 hover:text-blue-300"><i class="fas fa-image"></i></a>` : ''}
+                    </div>
                 </div>
-            `).join('');
+            `;}).join('');
         }
     }
 

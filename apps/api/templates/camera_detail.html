@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Camera Details | Laptop AI Box{% endblock %}
+{% block title %}Детали камеры | Laptop AI Box{% endblock %}
 {% block content %}
 <div class="mb-4">
-    <a href="/cameras" class="text-gray-400 hover:text-white"><i class="fas fa-arrow-left"></i> Back to Cameras</a>
+    <a href="/cameras" class="text-gray-400 hover:text-white"><i class="fas fa-arrow-left"></i> Назад к камерам</a>
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -10,49 +10,56 @@
     <div class="lg:col-span-2 bg-gray-800 rounded-lg shadow-xl overflow-hidden border border-gray-700">
         <div class="relative w-full aspect-video bg-black flex items-center justify-center">
             <video id="hls-player" controls class="w-full h-full hidden"></video>
+            <canvas id="theft-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-10 hidden"></canvas>
+            
+            <div id="roi-controls" class="absolute top-4 right-4 z-20 flex gap-2">
+                <button type="button" id="btn-draw-roi" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-2 rounded shadow transition-colors" title="Нарисовать зону кражи"><i class="fas fa-draw-polygon"></i> Зона Кассы</button>
+                <button type="button" id="btn-clear-roi" class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-2 rounded shadow hidden" title="Очистить зону"><i class="fas fa-trash"></i></button>
+                <button type="button" id="btn-save-roi" class="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-2 rounded shadow hidden"><i class="fas fa-check"></i> Сохранить</button>
+            </div>
             <div id="player-loading" class="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
                 <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
-                <p>Initializing HLS Stream...</p>
-                <p class="text-xs text-gray-600 mt-2">This may take a few seconds.</p>
+                <p>Инициализация HLS потока...</p>
+                <p class="text-xs text-gray-600 mt-2">Это может занять несколько секунд.</p>
             </div>
             <div id="player-error"
                 class="absolute inset-0 flex flex-col items-center justify-center text-red-500 hidden bg-black">
                 <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
-                <p>Stream unavailable.</p>
+                <p>Поток недоступен.</p>
             </div>
         </div>
         <div class="p-4 border-t border-gray-700 flex justify-between items-center">
-            <h2 id="cam-name" class="text-xl font-bold">Loading...</h2>
-            <div id="cam-status" class="px-3 py-1 bg-gray-700 text-xs rounded-full uppercase tracking-wide">WAIT</div>
+            <h2 id="cam-name" class="text-xl font-bold">Загрузка...</h2>
+            <div id="cam-status" class="px-3 py-1 bg-gray-700 text-xs rounded-full uppercase tracking-wide">ОЖИДАНИЕ</div>
         </div>
     </div>
 
     <!-- Settings Sidebar -->
     <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700">
-        <h3 class="text-lg font-bold mb-4 border-b border-gray-700 pb-2">Configuration</h3>
+        <h3 class="text-lg font-bold mb-4 border-b border-gray-700 pb-2">Конфигурация</h3>
 
         <form id="cam-settings-form" class="space-y-4">
             <div>
-                <label class="block text-sm text-gray-400">Name</label>
+                <label class="block text-sm text-gray-400">Название</label>
                 <input type="text" id="input-name"
                     class="mt-1 w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
                     value="Loading...">
             </div>
 
             <div class="flex items-center justify-between">
-                <label class="text-sm text-gray-400 font-medium">Camera Enabled</label>
+                <label class="text-sm text-gray-400 font-medium">Камера включена</label>
                 <input type="checkbox" id="input-enabled"
                     class="toggle-checkbox h-6 w-11 cursor-pointer appearance-none rounded-full bg-gray-600 checked:bg-blue-600 transition duration-200">
             </div>
 
             <div class="flex items-center justify-between">
-                <label class="text-sm text-gray-400 font-medium">AI Analysis Enabled</label>
+                <label class="text-sm text-gray-400 font-medium">Аналитика ИИ включена</label>
                 <input type="checkbox" id="input-ai"
                     class="toggle-checkbox h-6 w-11 cursor-pointer appearance-none rounded-full bg-gray-600 checked:bg-purple-600 transition duration-200">
             </div>
 
             <div>
-                <label class="block text-sm text-gray-400">AI Processing FPS Limit</label>
+                <label class="block text-sm text-gray-400">Лимит FPS обработки ИИ</label>
                 <div class="flex items-center gap-2 mt-1">
                     <input type="range" id="input-fps" min="1" max="30" class="w-full">
                     <span id="fps-val"
@@ -62,9 +69,18 @@
 
             <button type="submit"
                 class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded shadow transition mt-6">
-                Save Changes
+                Сохранить изменения
             </button>
         </form>
+
+        <div class="mt-8 pt-6 border-t border-gray-700">
+            <h4 class="text-sm font-bold text-gray-500 uppercase mb-4">Тестирование</h4>
+            <button id="btn-simulate-fight" 
+                class="w-full bg-purple-900/50 hover:bg-purple-800/50 text-purple-400 border border-purple-700 font-bold py-2 rounded shadow transition mb-2">
+                <i class="fas fa-hand-fist mr-2"></i> Симулировать Драку
+            </button>
+            <p class="text-[10px] text-gray-500 text-center">Создаст искусственное событие и отправит вебхук</p>
+        </div>
     </div>
 </div>
 
@@ -97,6 +113,15 @@
         document.getElementById('input-ai').checked = cam.ai_enabled;
         document.getElementById('input-fps').value = cam.fps_limit;
         fpsVal.innerText = cam.fps_limit;
+
+        if (cam.theft_zone) {
+            camTheftZone = JSON.parse(cam.theft_zone);
+            if (camTheftZone.length > 0) {
+                document.getElementById('theft-canvas').classList.remove('hidden');
+                document.getElementById('btn-clear-roi').classList.remove('hidden');
+                setTimeout(redrawCanvas, 100);
+            }
+        }
 
         // Trigger HLS conversion
         try {
@@ -176,7 +201,7 @@
 
         const btn = e.target.querySelector('button');
         const oldText = btn.innerText;
-        btn.innerText = 'Saving...';
+        btn.innerText = 'Сохранение...';
         btn.classList.add('opacity-50', 'cursor-not-allowed');
 
         await fetch(`/api/cameras/${camId}`, {
@@ -185,7 +210,7 @@
             body: JSON.stringify(data)
         });
 
-        btn.innerText = 'Saved!';
+        btn.innerText = 'Сохранено!';
         btn.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-blue-600');
         btn.classList.add('bg-green-600');
         setTimeout(() => {
@@ -193,6 +218,127 @@
             btn.classList.add('bg-blue-600');
             btn.classList.remove('bg-green-600');
         }, 2000);
+    });
+
+    document.getElementById('btn-simulate-fight').addEventListener('click', async () => {
+        if (!confirm('Вы уверены, что хотите запустить симуляцию детекции драки?')) return;
+        
+        try {
+            const res = await fetch(`/api/events/test-trigger?camera_id=${camId}&event_type=fight_suspected`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            alert(`Симуляция запущена! Создано событие: ${data.id}. Проверьте дашборд и ваши вебхуки.`);
+        } catch (e) {
+            alert(`Ошибка симуляции: ${e}`);
+        }
+    });
+
+    // ROI Canvas Logic
+    let camTheftZone = [];
+    let isDrawing = false;
+    let tempPoints = [];
+
+    const canvas = document.getElementById('theft-canvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+        if(canvas.clientWidth > 0) {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        } else {
+            canvas.width = 800; canvas.height = 450;
+        }
+    }
+
+    function redrawCanvas() {
+        resizeCanvas();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        let pts = isDrawing ? tempPoints : camTheftZone;
+        if (pts.length === 0) return;
+
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0] * canvas.width, pts[0][1] * canvas.height);
+        for (let i = 1; i < pts.length; i++) {
+            ctx.lineTo(pts[i][0] * canvas.width, pts[i][1] * canvas.height);
+        }
+        
+        if (!isDrawing && pts.length > 2) {
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; 
+            ctx.fill();
+        }
+        
+        ctx.strokeStyle = '#EF4444'; 
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        pts.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p[0] * canvas.width, p[1] * canvas.height, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = '#EF4444';
+            ctx.fill();
+            ctx.stroke();
+        });
+    }
+
+    window.addEventListener('resize', redrawCanvas);
+
+    document.getElementById('btn-draw-roi').addEventListener('click', () => {
+        isDrawing = true;
+        tempPoints = [];
+        canvas.classList.remove('hidden', 'pointer-events-none');
+        document.getElementById('btn-draw-roi').classList.add('hidden');
+        document.getElementById('btn-save-roi').classList.remove('hidden');
+        document.getElementById('btn-clear-roi').classList.add('hidden');
+        resizeCanvas();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    });
+
+    canvas.addEventListener('click', (e) => {
+        if (!isDrawing) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / canvas.width;
+        const y = (e.clientY - rect.top) / canvas.height;
+        tempPoints.push([x, y]);
+        redrawCanvas();
+    });
+
+    document.getElementById('btn-save-roi').addEventListener('click', async () => {
+        if (tempPoints.length < 3) {
+            alert('Пожалуйста, поставьте минимум 3 точки для создания зоны.');
+            return;
+        }
+
+        isDrawing = false;
+        camTheftZone = tempPoints;
+        canvas.classList.add('pointer-events-none');
+        document.getElementById('btn-draw-roi').classList.remove('hidden');
+        document.getElementById('btn-save-roi').classList.add('hidden');
+        document.getElementById('btn-clear-roi').classList.remove('hidden');
+        redrawCanvas();
+
+        await fetch(`/api/cameras/${camId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theft_zone: JSON.stringify(camTheftZone) })
+        });
+    });
+
+    document.getElementById('btn-clear-roi').addEventListener('click', async () => {
+        if (!confirm('Сбросить зону защиты и проверять весь кадр?')) return;
+        camTheftZone = [];
+        isDrawing = false;
+        canvas.classList.add('hidden', 'pointer-events-none');
+        document.getElementById('btn-clear-roi').classList.add('hidden');
+        redrawCanvas();
+
+        await fetch(`/api/cameras/${camId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theft_zone: null })
+        });
     });
 
     loadDetails();

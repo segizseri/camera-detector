@@ -1,3 +1,13 @@
+import torch
+import torch.serialization
+# Monkeypatch torch.load for PyTorch 2.6 compatibility with Ultralytics/YOLO
+_original_load = torch.load
+def _patched_load(*args, **kwargs):
+    kwargs['weights_only'] = False
+    return _original_load(*args, **kwargs)
+torch.load = _patched_load
+torch.serialization.load = _patched_load
+
 import time
 from libs.database import SessionLocal
 from libs.models import Camera

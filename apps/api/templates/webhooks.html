@@ -1,37 +1,37 @@
 {% extends "base.html" %}
-{% block title %}Webhooks | Laptop AI Box{% endblock %}
+{% block title %}Вебхуки | Laptop AI Box{% endblock %}
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Webhook Integrations</h1>
+<h1 class="text-3xl font-bold mb-6">Интеграции вебхуков</h1>
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
-        <h2 class="text-xl font-bold mb-4">Configured Webhooks</h2>
+        <h2 class="text-xl font-bold mb-4">Настроенные вебхуки</h2>
         <div id="webhooks-list" class="space-y-4"></div>
     </div>
 
     <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700 h-fit">
-        <h2 class="text-xl font-bold mb-4">Add New Webhook</h2>
+        <h2 class="text-xl font-bold mb-4">Добавить новый вебхук</h2>
         <form id="webhook-form" class="space-y-4">
             <div>
-                <label class="block text-sm font-medium text-gray-400">Name</label>
+                <label class="block text-sm font-medium text-gray-400">Название</label>
                 <input type="text" id="wh-name"
                     class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
                     required>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-400">URL</label>
+                <label class="block text-sm font-medium text-gray-400">URL-адрес</label>
                 <input type="url" id="wh-url"
                     class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
                     placeholder="https://..." required>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-400">Secret (for HMAC signature)</label>
+                <label class="block text-sm font-medium text-gray-400">Секрет (для HMAC подписи)</label>
                 <input type="text" id="wh-secret"
                     class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
                     required>
             </div>
             <button type="submit"
-                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded shadow transition">Add
-                Webhook</button>
+                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded shadow transition">Добавить
+                вебхук</button>
         </form>
     </div>
 </div>
@@ -43,7 +43,7 @@
 
         const list = document.getElementById('webhooks-list');
         if (hooks.length === 0) {
-            list.innerHTML = '<p class="text-gray-500 text-center">No webhooks configured.</p>';
+            list.innerHTML = '<p class="text-gray-500 text-center">Вебхуки не настроены.</p>';
             return;
         }
 
@@ -52,15 +52,28 @@
                 <div>
                     <h3 class="font-bold text-gray-200">${h.name}</h3>
                     <p class="text-xs text-gray-400 truncate w-48">${h.url}</p>
-                    <span class="${h.enabled ? 'text-green-500' : 'text-gray-500'} text-xs bg-gray-800 px-2 py-0.5 rounded mt-1 inline-block">${h.enabled ? 'ACTIVE' : 'DISABLED'}</span>
+                    <span class="${h.enabled ? 'text-green-500' : 'text-gray-500'} text-xs bg-gray-800 px-2 py-0.5 rounded mt-1 inline-block">${h.enabled ? 'АКТИВЕН' : 'ВЫКЛЮЧЕН'}</span>
                 </div>
-                <button onclick="deleteWebhook('${h.id}')" class="text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"><i class="fas fa-trash"></i></button>
+                <div class="flex items-center gap-3">
+                    <button onclick="testWebhook('${h.id}')" class="text-blue-500 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition" title="Тестовая отправка"><i class="fas fa-paper-plane"></i></button>
+                    <button onclick="deleteWebhook('${h.id}')" class="text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition" title="Удалить"><i class="fas fa-trash"></i></button>
+                </div>
             </div>
         `).join('');
     }
 
+    async function testWebhook(id) {
+        const res = await fetch(`/api/webhooks/${id}/test`, { method: 'POST' });
+        const out = await res.json();
+        if (res.ok) {
+            alert(`Тест успешно отправлен! HTTP код: ${out.http_code}`);
+        } else {
+            alert(`Ошибка теста: ${out.detail}`);
+        }
+    }
+
     async function deleteWebhook(id) {
-        if (!confirm('Delete webhook?')) return;
+        if (!confirm('Удалить вебхук?')) return;
         await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
         loadWebhooks();
     }

@@ -13,11 +13,25 @@ class NVRImportRequest(BaseModel):
     rtsp_transport: str = "tcp"
     brand_preset: str = "hikvision"
 
+class NVRChannelDiscovery(BaseModel):
+    channel: int
+    rtsp_url: str
+    status: str # online, offline
+    codec: Optional[str] = None
+
+class NVRDiscoverResponse(BaseModel):
+    channels: List[NVRChannelDiscovery]
+
+class NVRSelectiveImportRequest(BaseModel):
+    nvr: NVRImportRequest
+    selected_channels: List[int]
+
 class CameraUpdate(BaseModel):
     name: Optional[str] = None
     enabled: Optional[bool] = None
     ai_enabled: Optional[bool] = None
     fps_limit: Optional[int] = None
+    theft_zone: Optional[str] = None
 
 class RTSPTestResult(BaseModel):
     status: str

@@ -1,23 +1,23 @@
 {% extends "base.html" %}
-{% block title %}AI Monitoring | Laptop AI Box{% endblock %}
+{% block title %}Мониторинг ИИ | Laptop AI Box{% endblock %}
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">AI Worker Monitoring</h1>
+<h1 class="text-3xl font-bold mb-6">Мониторинг ИИ Воркера</h1>
 <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
-    <p class="text-gray-400 italic mb-4">View the status of the local AI inference engine and current detections.</p>
+    <p class="text-gray-400 italic mb-4">Просмотр статуса локального движка ИИ и текущих обнаружений.</p>
 
     <div class="overflow-x-auto">
         <table class="w-full text-left table-auto">
             <thead class="bg-gray-900 border-b border-gray-700">
                 <tr>
-                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Camera</th>
-                    <th class="px-4 py-3 text-sm font-medium text-gray-300">AI Enabled</th>
-                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Target FPS</th>
-                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Status</th>
+                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Камера</th>
+                    <th class="px-4 py-3 text-sm font-medium text-gray-300">ИИ включен</th>
+                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Целевой FPS</th>
+                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Статус</th>
                 </tr>
             </thead>
             <tbody id="ai-table" class="divide-y divide-gray-700">
                 <tr>
-                    <td colspan="4" class="text-center py-4 text-gray-500">Loading AI status...</td>
+                    <td colspan="4" class="text-center py-4 text-gray-500">Загрузка статуса ИИ...</td>
                 </tr>
             </tbody>
         </table>
@@ -31,7 +31,7 @@
 
         const table = document.getElementById('ai-table');
         if (cams.length === 0) {
-            table.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">No cameras configured</td></tr>';
+            table.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">Камеры не настроены</td></tr>';
             return;
         }
 
@@ -40,16 +40,20 @@
                 <td class="px-4 py-3 text-white font-medium">${cam.name} <span class="text-xs text-gray-500 ml-2">CH: ${cam.channel}</span></td>
                 <td class="px-4 py-3">
                     ${cam.ai_enabled
-                ? '<span class="text-green-400 bg-green-900/40 px-2 py-1 rounded text-xs"><i class="fas fa-check"></i> Enabled</span>'
-                : '<span class="text-gray-500 bg-gray-900 px-2 py-1 rounded text-xs"><i class="fas fa-times"></i> Disabled</span>'}
+                ? '<span class="text-green-400 bg-green-900/40 px-2 py-1 rounded text-xs"><i class="fas fa-check"></i> Включен</span>'
+                : '<span class="text-gray-500 bg-gray-900 px-2 py-1 rounded text-xs"><i class="fas fa-times"></i> Выключен</span>'}
                 </td>
                 <td class="px-4 py-3 text-gray-300 font-mono">${cam.fps_limit} fps</td>
                 <td class="px-4 py-3">
-                    <span class="text-blue-400 bg-blue-900/40 px-2 py-1 rounded text-xs">Waiting for worker...</span>
+                    ${cam.status === 'online' 
+                        ? `<span class="text-green-400 bg-green-900/40 px-2 py-1 rounded text-xs"><i class="fas fa-circle mr-1"></i> Онлайн</span>
+                           <div class="text-[10px] text-gray-500 mt-1">Активен: ${new Date(cam.last_seen).toLocaleTimeString()}</div>`
+                        : `<span class="text-blue-400 bg-blue-900/40 px-2 py-1 rounded text-xs">Ожидание воркера...</span>`}
                 </td>
             </tr>
         `).join('');
     }
+    setInterval(loadAI, 5000);
     loadAI();
 </script>
 {% endblock %}

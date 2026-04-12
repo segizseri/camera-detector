@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libgl1 \
     v4l-utils \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-worker.txt ./requirements.txt

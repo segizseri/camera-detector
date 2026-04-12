@@ -34,6 +34,8 @@ def update_camera(camera_id: str, update: CameraUpdate, db: Session = Depends(ge
         cam.ai_enabled = update.ai_enabled
     if update.fps_limit is not None:
         cam.fps_limit = update.fps_limit
+    if update.theft_zone is not None:
+        cam.theft_zone = update.theft_zone
         
     db.commit()
     db.refresh(cam)
@@ -89,7 +91,8 @@ def trigger_hls(camera_id: str, db: Session = Depends(get_db)):
     
     cmd = [
         "ffmpeg", "-rtsp_transport", "tcp", "-i", cam.rtsp_url,
-        "-c:v", "copy", "-f", "hls", "-hls_time", "2", "-hls_list_size", "6",
+        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+        "-c:a", "aac", "-f", "hls", "-hls_time", "2", "-hls_list_size", "6",
         "-hls_flags", "delete_segments+append_list", m3u8_path
     ]
     
@@ -103,3 +106,13 @@ def trigger_hls(camera_id: str, db: Session = Depends(get_db)):
     t.start()
     
     return {"status": "starting", "hls_url": f"/media/hls/{camera_id}/index.m3u8"}
+
+@router.delete("/{camera_id}")
+def delete_camera(camera_id: str, db: Session = Depends(get_db)):
+    cam = db.query(Camera).filter(Camera.id == camera_id).first()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    db.delete(cam)
+    db.commit()
+    return {"status": "success"}

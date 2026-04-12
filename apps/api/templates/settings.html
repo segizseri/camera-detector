@@ -1,35 +1,70 @@
 {% extends "base.html" %}
-{% block title %}Settings | Laptop AI Box{% endblock %}
+{% block title %}Настройки | Laptop AI Box{% endblock %}
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Global Settings</h1>
+<h1 class="text-3xl font-bold mb-6">Глобальные настройки</h1>
 <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700 max-w-2xl">
-    <p class="text-gray-400 mb-6">Configure global parameters for the AI Box.</p>
+    <p class="text-gray-400 mb-6">Настройте глобальные параметры для AI Box.</p>
 
-    <form class="space-y-6">
+    <form id="settings-form" class="space-y-6">
         <div>
-            <label class="block text-sm font-medium text-gray-300">Data Retention (Days)</label>
-            <input type="number" value="7"
+            <label class="block text-sm font-medium text-gray-300">Хранение данных (Дней)</label>
+            <input type="number" id="retention_days"
                 class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-gray-300">Minimum Confidence Threshold (%)</label>
-            <input type="number" value="65"
+            <label class="block text-sm font-medium text-gray-300">Минимальный порог уверенности (%)</label>
+            <input type="number" id="min_confidence" step="0.01"
                 class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-gray-300">Fight Detection Sensitivity</label>
-            <select class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
-                <option>Low</option>
-                <option selected>Medium</option>
-                <option>High</option>
+            <label class="block text-sm font-medium text-gray-300">Чувствительность обнаружения драк</label>
+            <select id="fight_sensitivity" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
+                <option value="low">Низкая</option>
+                <option value="medium">Средняя</option>
+                <option value="high">Высокая</option>
             </select>
         </div>
 
-        <button type="button"
-            class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded shadow transition"
-            onclick="alert('Settings saved (mocked)')">Save Settings</button>
+        <button type="submit"
+            class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded shadow transition">
+            Сохранить настройки
+        </button>
     </form>
 </div>
+
+<script>
+    async function loadSettings() {
+        const res = await fetch('/api/settings/');
+        const data = await res.json();
+        
+        if (data.retention_days) document.getElementById('retention_days').value = data.retention_days;
+        if (data.min_confidence) document.getElementById('min_confidence').value = data.min_confidence;
+        if (data.fight_sensitivity) document.getElementById('fight_sensitivity').value = data.fight_sensitivity;
+    }
+
+    document.getElementById('settings-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const settings = {
+            retention_days: document.getElementById('retention_days').value,
+            min_confidence: document.getElementById('min_confidence').value,
+            fight_sensitivity: document.getElementById('fight_sensitivity').value
+        };
+
+        const res = await fetch('/api/settings/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings })
+        });
+
+        if (res.ok) {
+            alert('Настройки успешно сохранены!');
+        } else {
+            alert('Ошибка при сохранении настроек');
+        }
+    });
+
+    loadSettings();
+</script>
 {% endblock %}

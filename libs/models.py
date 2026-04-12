@@ -17,6 +17,7 @@ class Camera(Base):
     enabled = Column(Boolean, default=True)
     ai_enabled = Column(Boolean, default=True)
     fps_limit = Column(Integer, default=5)
+    theft_zone = Column(Text, nullable=True)
     
     status = Column(String, default="offline") # offline, online, error
     last_seen = Column(DateTime, nullable=True)
@@ -36,8 +37,8 @@ class Event(Base):
     clip_path = Column(String, nullable=True)
     
     meta_json = Column(Text, nullable=True)
-
     camera = relationship("Camera", back_populates="events")
+    deliveries = relationship("WebhookDelivery", cascade="all, delete-orphan", backref="event")
 
 class Webhook(Base):
     __tablename__ = "webhooks"
@@ -58,3 +59,10 @@ class WebhookDelivery(Base):
     attempts = Column(Integer, default=0)
     next_attempt = Column(DateTime, default=datetime.utcnow)
     last_error = Column(Text, nullable=True)
+
+class GlobalSetting(Base):
+    __tablename__ = "global_settings"
+
+    key = Column(String, primary_key=True, index=True)
+    value = Column(String)
+    description = Column(String, nullable=True)

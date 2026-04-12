@@ -1,54 +1,96 @@
 {% extends "base.html" %}
-{% block title %}Events History | Laptop AI Box{% endblock %}
+{% block title %}История событий | Laptop AI Box{% endblock %}
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Event History</h1>
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+    <h1 class="text-3xl font-bold">История событий</h1>
+    <div class="flex items-center gap-3">
+        <select id="filter-type" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm focus:ring-blue-500">
+            <option value="all">Все типы</option>
+            <option value="fight_suspected">Драка</option>
+            <option value="theft_suspected">Кража / Воровство</option>
+            <option value="person_detected">Человек</option>
+            <option value="camera_offline">Оффлайн</option>
+        </select>
+        <button onclick="clearAllEvents()" class="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-900/50 px-4 py-1.5 rounded text-sm transition-all">
+            <i class="fas fa-trash-alt mr-2"></i> Очистить всё
+        </button>
+    </div>
+</div>
 
 <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
     <div id="events-list" class="space-y-4">
-        <div class="text-center text-gray-500 py-12"><i class="fas fa-spinner fa-spin text-3xl mb-4"></i> Loading
-            events...</div>
+        <div class="text-center text-gray-500 py-12"><i class="fas fa-spinner fa-spin text-3xl mb-4"></i> Загрузка
+            событий...</div>
     </div>
 </div>
 
 <script>
+    async function clearAllEvents() {
+        if (!confirm('Вы уверены, что хотите удалить ВСЕ события? Это действие необратимо.')) return;
+        const res = await fetch('/api/events/all', { method: 'DELETE' });
+        if (res.ok) {
+            loadEvents();
+        } else {
+            alert('Ошибка при очистке событий');
+        }
+    }
+
     async function loadEvents() {
         try {
+            const filterType = document.getElementById('filter-type').value;
             const res = await fetch('/api/events');
-            const events = await res.json();
+            let events = await res.json();
+
+            // Client-side filtering for simplicity in MVP
+            if (filterType !== 'all') {
+                events = events.filter(e => e.event_type === filterType);
+            }
 
             const list = document.getElementById('events-list');
             if (events.length === 0) {
-                list.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-4"></i><p>No events found yet.</p></div>';
+                list.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-4"></i><p>События не найдены.</p></div>';
                 return;
             }
 
-            list.innerHTML = events.map(e => `
+            const eventMapping = {
+                'person_detected': 'Обнаружен человек',
+                'fight_suspected': 'Подозрение на драку',
+                'theft_suspected': 'Подозрение на кражу',
+                'camera_offline': 'Камера отключена'
+            };
+
+            list.innerHTML = events.map(e => {
+                const displayName = eventMapping[e.event_type] || e.event_type;
+                return `
                 <div class="flex items-start bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-gray-500 transition-colors">
                     <div class="w-12 h-12 flex-shrink-0 bg-gray-800 rounded flex items-center justify-center mr-4">
                         ${e.event_type.includes('person') ? '<i class="fas fa-user-friends text-blue-500 text-xl"></i>' :
                     e.event_type.includes('fight') ? '<i class="fas fa-exclamation-triangle text-red-500 text-xl"></i>' :
+                    e.event_type.includes('theft') ? '<i class="fas fa-hand-holding-box text-purple-500 text-xl"></i>' :
                         '<i class="fas fa-video-slash text-yellow-500 text-xl"></i>'}
                     </div>
                     <div class="flex-grow">
                         <div class="flex justify-between items-center mb-1">
-                            <h3 class="text-lg font-bold text-gray-200 capitalize">${e.event_type.replace(/_/g, ' ')}</h3>
+                            <h3 class="text-lg font-bold text-gray-200 capitalize">${displayName}</h3>
                             <span class="text-xs text-gray-500">${new Date(e.timestamp).toLocaleString()}</span>
                         </div>
-                        <p class="text-sm text-gray-400">Camera: ${e.camera_id}</p>
-                        ${e.confidence ? `<p class="text-xs mt-2 text-gray-500 font-mono">Confidence: ${(e.confidence * 100).toFixed(1)}%</p>` : ''}
+                        <p class="text-sm text-gray-400">Камера: ${e.camera_id}</p>
+                        ${e.confidence ? `<p class="text-xs mt-2 text-gray-500 font-mono">Уверенность: ${(e.confidence * 100).toFixed(1)}%</p>` : ''}
                         
                         ${e.snapshot_path ? `
                             <div class="mt-4 break-words text-xs gap-2 flex items-center">
-                                <a href="${e.snapshot_path}" target="_blank" class="px-3 py-1 bg-blue-600/30 hover:bg-blue-600 text-blue-300 rounded"><i class="fas fa-image"></i> View Snapshot</a>
+                                <a href="/media/snapshots/${e.snapshot_path}" target="_blank" class="px-3 py-1 bg-blue-600/30 hover:bg-blue-600 text-blue-300 rounded"><i class="fas fa-image"></i> Посмотреть снимок</a>
                             </div>
                         ` : ''}
                     </div>
                 </div>
-            `).join('');
+            `; }).join('');
         } catch (e) {
-            document.getElementById('events-list').innerHTML = `<div class="text-red-500 py-8 text-center">Failed to load events: ${e}</div>`;
+            document.getElementById('events-list').innerHTML = `<div class="text-red-500 py-8 text-center">Не удалось загрузить события: ${e}</div>`;
         }
     }
+
+    document.getElementById('filter-type').addEventListener('change', loadEvents);
     loadEvents();
 </script>
 {% endblock %}

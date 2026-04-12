@@ -7,7 +7,7 @@ from collections import deque
 from datetime import datetime
 from libs.database import SessionLocal
 from libs.models import Event, Camera
-from libs.rules import PersonDetector, FightDetector
+from libs.rules import PersonDetector, AIActionDetector
 from libs.webhooks import queue_webhook
 from libs.config import settings
 
@@ -23,7 +23,10 @@ class CameraPipeline:
         
         self.running = True
         self.person_det = PersonDetector(camera_id)
-        self.fight_det = FightDetector(camera_id)
+        self.action_det = AIActionDetector(camera_id)
+        
+        self.last_sync_time = 0
+        self.last_res = None
         
         self.ingest_thread = threading.Thread(target=self._ingest_loop, daemon=True)
         self.ingest_thread.start()
@@ -35,11 +38,12 @@ class CameraPipeline:
             return None
 
     def _ingest_loop(self):
+        import os
         while self.running:
             # Reconnect logic
             print(f"[{self.camera_id}] Connecting to RTSP...")
             # Use TCP for stability as requested
-            os_env = {"OPENCV_FFMPEG_CAPTURE_OPTIONS": "rtsp_transport;tcp"}
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
             cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
             
             if not cap.isOpened():
@@ -75,7 +79,8 @@ class CameraPipeline:
             
             cap.release()
             self._record_offline_event()
-            time.sleep(2)
+            # Increased backoff for 404/connection errors to reduce NVR load and log spam
+            time.sleep(10)
 
     def _record_offline_event(self):
         # We should only fire "offline" every once in a while
@@ -89,32 +94,80 @@ class CameraPipeline:
             queue_webhook(evt)
         db.close()
 
-    def handle_ai_results(self, bboxes, frame, timestamp):
+    def handle_ai_results(self, bboxes, keypoints, res, frame, timestamp):
         # bboxes: list of predictions from YOLO [x1, y1, x2, y2, conf, cls]
-        # Bytetrack logic could be applied here if full model tracking is used.
+        # keypoints: numpy array [N, 17, 3]
         has_person, n_people = self.person_det.check_alert(bboxes)
-        fight_score = self.fight_det.add_frame(bboxes, timestamp)
+        action_class, action_prob = self.action_det.add_frame(bboxes, keypoints, timestamp)
+        
+        # Store for snapshot drawing
+        self.last_res = res
         
         now = time.time()
         
-        if has_person and (now - self.person_det.last_alert_time > self.person_det.cooldown):
-            self.person_det.last_alert_time = now
-            self._trigger_event("person_detected", 1.0, frame)
-            
-        if fight_score > self.fight_det.fight_threshold and (now - self.fight_det.last_alert_time > self.fight_det.cooldown):
-            self.fight_det.last_alert_time = now
-            self._trigger_event("fight_suspected", float(fight_score), frame)
-            
-        # Update camera status purely to online based on frame ingestion + AI processed
-        db = SessionLocal()
-        cam = db.query(Camera).filter(Camera.id == self.camera_id).first()
-        if cam and cam.status != "online":
-            cam.status = "online"
-            cam.last_seen = datetime.utcnow()
-            db.commit()
-        db.close()
+        # 1: Fight, 2: Bullying, 3: Theft
+        if action_class > 0:
+            if action_prob > self.action_det.thresholds.get(action_class, 0.6):
+                
+                # Check Theft Zone
+                if action_class == 3 and hasattr(self, 'theft_zone') and self.theft_zone:
+                    try:
+                        import json, numpy as np, cv2
+                        zone_pts = json.loads(self.theft_zone)
+                        if len(zone_pts) >= 3:
+                            h, w = frame.shape[:2]
+                            contour = np.array([[[int(p[0]*w), int(p[1]*h)]] for p in zone_pts], dtype=np.int32)
+                            
+                            is_inside = False
+                            for box in bboxes:
+                                cx = (box[0] + box[2]) / 2.0
+                                cy = (box[1] + box[3]) / 2.0
+                                if cv2.pointPolygonTest(contour, (float(cx), float(cy)), False) >= 0:
+                                    is_inside = True
+                                    break
+                                    
+                            if not is_inside:
+                                return # Skip detection if out of zone!
+                    except Exception as e:
+                        print(f"Error evaluating theft zone ROI: {e}")
 
-    def _trigger_event(self, event_type, conf, frame):
+                if now - self.action_det.last_alerts.get(action_class, 0) > self.action_det.cooldowns.get(action_class, 30):
+                    self.action_det.last_alerts[action_class] = now
+                    
+                    event_types = {1: "fight_suspected", 2: "bullying_suspected", 3: "theft_suspected"}
+                    event_type = event_types[action_class]
+                    self._trigger_event(event_type, float(action_prob), res, frame)
+            
+        # Update camera status periodically
+        if now - self.last_sync_time > 10:
+            self.last_sync_time = now
+            self._sync_and_status()
+
+    def _sync_and_status(self):
+        from libs.models import GlobalSetting
+        db = SessionLocal()
+        try:
+            # Status update
+            cam = db.query(Camera).filter(Camera.id == self.camera_id).first()
+            if cam:
+                cam.status = "online"
+                cam.last_seen = datetime.utcnow()
+                self.theft_zone = cam.theft_zone
+            
+            # Settings sync
+            settings = {s.key: s.value for s in db.query(GlobalSetting).all()}
+            if 'fight_sensitivity' in settings:
+                s = settings['fight_sensitivity']
+                mapping = {'low': 0.8, 'medium': 0.6, 'high': 0.4}
+                self.action_det.thresholds[1] = mapping.get(s, 0.6)
+            
+            db.commit()
+        except Exception as e:
+            print(f"Error in sync: {e}")
+        finally:
+            db.close()
+
+    def _trigger_event(self, event_type, conf, res, frame):
         import cv2
         import os
         event_id = str(uuid.uuid4())
@@ -123,9 +176,37 @@ class CameraPipeline:
         snap_name = f"{event_id}.jpg"
         snap_path = os.path.join(settings.SNAPSHOTS_DIR, snap_name)
         
-        # Draw boxes on frame
-        draw_frame = frame.copy()
-        cv2.putText(draw_frame, f"EVENT: {event_type}", (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+        # Draw skeletons and boxes using YOLO's plot()
+        draw_frame = res.plot()
+        
+        # Draw Russian event type label on frame (using Pillow)
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            pil_img = Image.fromarray(cv2.cvtColor(draw_frame, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(pil_img)
+            
+            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+            try:
+                font = ImageFont.truetype(font_path, 40)
+            except:
+                font = ImageFont.load_default()
+                
+            label_map = {
+                'person_detected': 'ОБНАРУЖЕН ЧЕЛОВЕК',
+                'fight_suspected': 'ПОДОЗРЕНИЕ НА ДРАКУ',
+                'bullying_suspected': 'ПОДОЗРЕНИЕ НА БУЛЛИНГ',
+                'theft_suspected': 'ПОДОЗРЕНИЕ НА КРАЖУ'
+            }
+            label = label_map.get(event_type, event_type).upper()
+            
+            draw.text((52, 52), f"СОБЫТИЕ: {label}", font=font, fill=(0,0,0))
+            draw.text((50, 50), f"СОБЫТИЕ: {label}", font=font, fill=(255,0,0))
+            
+            draw_frame = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            print(f"Failed to draw Russian text on pose-frame: {e}")
+            cv2.putText(draw_frame, f"EVENT: {event_type}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
         cv2.imwrite(snap_path, draw_frame)
         
         db = SessionLocal()

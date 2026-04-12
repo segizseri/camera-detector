@@ -1,11 +1,19 @@
 import threading
 import queue
 import time
+import torch
 from ultralytics import YOLO
+import ultralytics.nn.tasks
 
 class AIWorker:
     def __init__(self):
-        self.model = YOLO("yolov8n.pt") # download on first run
+        # Fix for PyTorch 2.6+ safe globals (WeightsUnpickler error)
+        try:
+            torch.serialization.add_safe_globals([ultralytics.nn.tasks.DetectionModel])
+        except (AttributeError, NameError):
+            pass
+
+        self.model = YOLO("yolov8n-pose.pt")
         self.running = True
         self.pipelines = {}
         self.lock = threading.Lock()
@@ -21,7 +29,7 @@ class AIWorker:
                 
     def loop(self):
         # AI Processing thread - iterates over pipelines continuously
-        print("AI Worker Started.")
+        print("AI Worker Started with Pose Model.")
         while self.running:
             processed_any = False
             
@@ -40,13 +48,19 @@ class AIWorker:
                 
                 # Inference
                 results = self.model(frame, verbose=False)
+                res = results[0]
                 
                 # Results parsing
-                # results[0].boxes.data -> [x1, y1, x2, y2, confidence, class]
-                bboxes = results[0].boxes.data.cpu().numpy().tolist()
+                # res.boxes.data -> [x1, y1, x2, y2, confidence, class]
+                bboxes = res.boxes.data.cpu().numpy().tolist()
+                keypoints = None
+                if hasattr(res, 'keypoints') and res.keypoints is not None:
+                    # keypoints.data -> [N, 17, 3] (x, y, conf)
+                    keypoints = res.keypoints.data.cpu().numpy()
                 
                 # Dispatch back to pipeline to trigger events
-                p.handle_ai_results(bboxes, frame, ts)
+                # Pass 'res' as well if needed for plot() or other YOLO tools
+                p.handle_ai_results(bboxes, keypoints, res, frame, ts)
                 processed_any = True
                 
             if not processed_any:
