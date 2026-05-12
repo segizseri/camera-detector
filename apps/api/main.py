@@ -14,6 +14,7 @@ app = FastAPI(title="Camera Detector AI Box")
 os.makedirs("data/media/hls", exist_ok=True)
 os.makedirs("data/media/snapshots", exist_ok=True)
 os.makedirs("data/media/clips", exist_ok=True)
+os.makedirs("apps/api/static", exist_ok=True)
 
 app.mount("/static", StaticFiles(directory="apps/api/static"), name="static")
 app.mount("/media", StaticFiles(directory="data/media"), name="media")
