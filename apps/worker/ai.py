@@ -46,8 +46,8 @@ class AIWorker:
                 except queue.Empty:
                     continue
                 
-                # Inference
-                results = self.model(frame, verbose=False)
+                # Inference with Tracking
+                results = self.model.track(frame, persist=True, tracker="bytetrack.yaml", verbose=False)
                 res = results[0]
                 
                 # Results parsing

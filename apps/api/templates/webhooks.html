@@ -12,19 +12,26 @@
         <h2 class="text-xl font-bold mb-4">Добавить новый вебхук</h2>
         <form id="webhook-form" class="space-y-4">
             <div>
+                <label class="block text-sm font-medium text-gray-400">Тип уведомления</label>
+                <select id="wh-type" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500" onchange="toggleType()">
+                    <option value="http">HTTP Webhook</option>
+                    <option value="telegram">Telegram Bot</option>
+                </select>
+            </div>
+            <div>
                 <label class="block text-sm font-medium text-gray-400">Название</label>
                 <input type="text" id="wh-name"
                     class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
                     required>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-400">URL-адрес</label>
-                <input type="url" id="wh-url"
+                <label id="wh-url-label" class="block text-sm font-medium text-gray-400">URL-адрес</label>
+                <input type="text" id="wh-url"
                     class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
                     placeholder="https://..." required>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-400">Секрет (для HMAC подписи)</label>
+                <label id="wh-secret-label" class="block text-sm font-medium text-gray-400">Секрет (для HMAC подписи)</label>
                 <input type="text" id="wh-secret"
                     class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
                     required>
@@ -33,12 +40,43 @@
                 class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded shadow transition">Добавить
                 вебхук</button>
         </form>
+</div>
+
+<!-- Premium Delete Confirmation Modal -->
+<div id="delete-modal" class="fixed inset-0 z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeDeleteModal()"></div>
+    <div class="relative bg-gray-900 border border-gray-700 shadow-2xl rounded-2xl p-6 max-w-sm w-full mx-4 transform scale-95 transition-transform duration-300" id="delete-modal-content">
+        <div class="flex items-center justify-center w-14 h-14 rounded-full bg-red-500/10 text-red-500 mb-5 mx-auto ring-4 ring-red-500/20">
+            <i class="fas fa-trash-alt text-2xl"></i>
+        </div>
+        <h3 class="text-xl font-bold text-gray-100 text-center mb-2">Удалить интеграцию?</h3>
+        <p class="text-gray-400 text-sm text-center mb-6 leading-relaxed">Это действие нельзя будет отменить. Вы уверены, что хотите навсегда удалить этот вебхук?</p>
+        
+        <div class="flex gap-3">
+            <button type="button" onclick="closeDeleteModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-200 py-2.5 rounded-xl transition-colors font-medium border border-gray-700">Отмена</button>
+            <button type="button" onclick="executeDeleteWebhook()" class="flex-1 bg-red-600 hover:bg-red-500 text-white py-2.5 rounded-xl transition-all shadow-[0_0_15px_rgba(220,38,38,0.2)] hover:shadow-[0_0_20px_rgba(220,38,38,0.4)] font-medium">Удалить</button>
+        </div>
     </div>
 </div>
 
 <script>
+    function toggleType() {
+        const type = document.getElementById('wh-type').value;
+        const urlInput = document.getElementById('wh-url');
+        
+        if (type === 'telegram') {
+            document.getElementById('wh-url-label').innerText = 'Chat ID';
+            document.getElementById('wh-secret-label').innerText = 'Bot Token';
+            urlInput.placeholder = '-100123... или @channel_name';
+        } else {
+            document.getElementById('wh-url-label').innerText = 'URL-адрес';
+            document.getElementById('wh-secret-label').innerText = 'Секрет (для HMAC подписи)';
+            urlInput.placeholder = 'https://...';
+        }
+    }
+
     async function loadWebhooks() {
-        const res = await fetch('/api/webhooks');
+        const res = await fetch('/api/webhooks', { cache: 'no-store' });
         const hooks = await res.json();
 
         const list = document.getElementById('webhooks-list');
@@ -47,19 +85,22 @@
             return;
         }
 
-        list.innerHTML = hooks.map(h => `
+        list.innerHTML = hooks.map(h => {
+            const icon = (h.hook_type === 'telegram') ? '<i class="fab fa-telegram text-blue-400"></i>' : '<i class="fas fa-globe text-gray-400"></i>';
+            return `
             <div class="bg-gray-900 border border-gray-700 p-4 rounded flex justify-between items-center group">
                 <div>
-                    <h3 class="font-bold text-gray-200">${h.name}</h3>
+                    <h3 class="font-bold text-gray-200">${icon} ${h.name}</h3>
                     <p class="text-xs text-gray-400 truncate w-48">${h.url}</p>
                     <span class="${h.enabled ? 'text-green-500' : 'text-gray-500'} text-xs bg-gray-800 px-2 py-0.5 rounded mt-1 inline-block">${h.enabled ? 'АКТИВЕН' : 'ВЫКЛЮЧЕН'}</span>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button onclick="testWebhook('${h.id}')" class="text-blue-500 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition" title="Тестовая отправка"><i class="fas fa-paper-plane"></i></button>
-                    <button onclick="deleteWebhook('${h.id}')" class="text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition" title="Удалить"><i class="fas fa-trash"></i></button>
+                    <button type="button" onclick="testWebhook('${h.id}')" class="text-blue-500 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition" title="Тестовая отправка"><i class="fas fa-paper-plane"></i></button>
+                    <button type="button" onclick="confirmDelete('${h.id}')" class="text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition" title="Удалить"><i class="fas fa-trash"></i></button>
                 </div>
             </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     async function testWebhook(id) {
@@ -72,16 +113,47 @@
         }
     }
 
-    async function deleteWebhook(id) {
-        if (!confirm('Удалить вебхук?')) return;
-        await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
-        loadWebhooks();
+    let webhookToDelete = null;
+
+    function confirmDelete(id) {
+        webhookToDelete = id;
+        const modal = document.getElementById('delete-modal');
+        const content = document.getElementById('delete-modal-content');
+        
+        modal.classList.remove('opacity-0', 'pointer-events-none');
+        content.classList.remove('scale-95');
+        content.classList.add('scale-100');
+    }
+
+    function closeDeleteModal() {
+        const modal = document.getElementById('delete-modal');
+        const content = document.getElementById('delete-modal-content');
+        
+        modal.classList.add('opacity-0', 'pointer-events-none');
+        content.classList.remove('scale-100');
+        content.classList.add('scale-95');
+        webhookToDelete = null;
+    }
+
+    async function executeDeleteWebhook() {
+        if (!webhookToDelete) return;
+        const id = webhookToDelete;
+        closeDeleteModal();
+        
+        const res = await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            await loadWebhooks();
+        } else {
+            const out = await res.json();
+            alert(`Ошибка при удалении: ${out.detail || 'Неизвестная ошибка'}`);
+        }
     }
 
     document.getElementById('webhook-form').addEventListener('submit', async e => {
         e.preventDefault();
         const data = {
             name: document.getElementById('wh-name').value,
+            hook_type: document.getElementById('wh-type').value,
             url: document.getElementById('wh-url').value,
             secret: document.getElementById('wh-secret').value,
             enabled: true
@@ -92,6 +164,7 @@
             body: JSON.stringify(data)
         });
         e.target.reset();
+        toggleType(); // reset placeholders
         loadWebhooks();
     });
 

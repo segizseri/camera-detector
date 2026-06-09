@@ -12,10 +12,14 @@
             <video id="hls-player" controls class="w-full h-full hidden"></video>
             <canvas id="theft-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-10 hidden"></canvas>
             
-            <div id="roi-controls" class="absolute top-4 right-4 z-20 flex gap-2">
-                <button type="button" id="btn-draw-roi" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-2 rounded shadow transition-colors" title="Нарисовать зону кражи"><i class="fas fa-draw-polygon"></i> Зона Кассы</button>
-                <button type="button" id="btn-clear-roi" class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-2 rounded shadow hidden" title="Очистить зону"><i class="fas fa-trash"></i></button>
-                <button type="button" id="btn-save-roi" class="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-2 rounded shadow hidden"><i class="fas fa-check"></i> Сохранить</button>
+            <div id="roi-controls" class="absolute top-4 right-4 z-20 flex flex-wrap justify-end gap-2 max-w-[300px]">
+                <button type="button" id="btn-draw-roi" class="bg-blue-600 hover:bg-blue-500 text-white text-[10px] px-2 py-1 rounded shadow transition-colors" title="Нарисовать зону кражи"><i class="fas fa-draw-polygon"></i> Зона Кассы</button>
+                <button type="button" id="btn-draw-display" class="bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] px-2 py-1 rounded shadow transition-colors" title="Нарисовать зону витрины"><i class="fas fa-draw-polygon"></i> Зона Витрины</button>
+                <button type="button" id="btn-draw-front" class="bg-green-600 hover:bg-green-500 text-white text-[10px] px-2 py-1 rounded shadow transition-colors" title="Нарисовать линию (передняя дверь)"><i class="fas fa-grip-lines"></i> Перед. дверь</button>
+                <button type="button" id="btn-draw-rear" class="bg-green-600 hover:bg-green-500 text-white text-[10px] px-2 py-1 rounded shadow transition-colors" title="Нарисовать линию (задняя дверь)"><i class="fas fa-grip-lines"></i> Зад. дверь</button>
+                
+                <button type="button" id="btn-clear-roi" class="bg-red-600 hover:bg-red-500 text-white text-[10px] px-2 py-1 rounded shadow hidden" title="Очистить всё"><i class="fas fa-trash"></i> Сброс</button>
+                <button type="button" id="btn-save-roi" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] px-2 py-1 rounded shadow hidden"><i class="fas fa-check"></i> Сохранить</button>
             </div>
             <div id="player-loading" class="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
                 <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
@@ -67,6 +71,35 @@
                 </div>
             </div>
 
+            <div class="space-y-3 pt-4 border-t border-gray-700">
+                <h4 class="text-xs font-bold text-gray-500 uppercase">Активные детекторы</h4>
+                
+                <div class="flex items-center justify-between">
+                    <label class="text-xs text-gray-300">Детекция Драк</label>
+                    <input type="checkbox" id="check-fights" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-red-600">
+                </div>
+                
+                <div class="flex items-center justify-between">
+                    <label class="text-xs text-gray-300">Детекция Буллинга</label>
+                    <input type="checkbox" id="check-bullying" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-orange-600">
+                </div>
+                
+                <div class="flex items-center justify-between">
+                    <label class="text-xs text-gray-300">Детекция Кражи</label>
+                    <input type="checkbox" id="check-theft" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-blue-600">
+                </div>
+                
+                <div class="flex items-center justify-between">
+                    <label class="text-xs text-gray-300">Счетчик Пассажиров</label>
+                    <input type="checkbox" id="check-passengers" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-green-600">
+                </div>
+                
+                <div class="flex items-center justify-between">
+                    <label class="text-xs text-gray-300">Детекция Кражи из витрины</label>
+                    <input type="checkbox" id="check-shoplifting" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-cyan-600">
+                </div>
+            </div>
+
             <button type="submit"
                 class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded shadow transition mt-6">
                 Сохранить изменения
@@ -114,14 +147,40 @@
         document.getElementById('input-fps').value = cam.fps_limit;
         fpsVal.innerText = cam.fps_limit;
 
+        document.getElementById('check-fights').checked = cam.detect_fights;
+        document.getElementById('check-bullying').checked = cam.detect_bullying;
+        document.getElementById('check-theft').checked = cam.detect_theft;
+        document.getElementById('check-passengers').checked = cam.detect_passengers;
+        document.getElementById('check-shoplifting').checked = cam.detect_shoplifting;
+        
+        // Hide/show drawing buttons based on features
+        updateDrawingButtons();
+
         if (cam.theft_zone) {
             camTheftZone = JSON.parse(cam.theft_zone);
             if (camTheftZone.length > 0) {
                 document.getElementById('theft-canvas').classList.remove('hidden');
                 document.getElementById('btn-clear-roi').classList.remove('hidden');
-                setTimeout(redrawCanvas, 100);
             }
         }
+
+        if (cam.counting_config) {
+            camCountingConfig = JSON.parse(cam.counting_config);
+            if (camCountingConfig.length > 0) {
+                document.getElementById('theft-canvas').classList.remove('hidden');
+                document.getElementById('btn-clear-roi').classList.remove('hidden');
+            }
+        }
+
+        if (cam.display_zone) {
+            camDisplayZone = JSON.parse(cam.display_zone);
+            if (camDisplayZone.length > 0) {
+                document.getElementById('theft-canvas').classList.remove('hidden');
+                document.getElementById('btn-clear-roi').classList.remove('hidden');
+            }
+        }
+        
+        setTimeout(redrawCanvas, 100);
 
         // Trigger HLS conversion
         try {
@@ -196,7 +255,12 @@
             name: document.getElementById('input-name').value,
             enabled: document.getElementById('input-enabled').checked,
             ai_enabled: document.getElementById('input-ai').checked,
-            fps_limit: parseInt(document.getElementById('input-fps').value)
+            fps_limit: parseInt(document.getElementById('input-fps').value),
+            detect_fights: document.getElementById('check-fights').checked,
+            detect_bullying: document.getElementById('check-bullying').checked,
+            detect_theft: document.getElementById('check-theft').checked,
+            detect_passengers: document.getElementById('check-passengers').checked,
+            detect_shoplifting: document.getElementById('check-shoplifting').checked
         };
 
         const btn = e.target.querySelector('button');
@@ -236,7 +300,11 @@
 
     // ROI Canvas Logic
     let camTheftZone = [];
+    let camDisplayZone = []; // Polygon for display case zone
+    let camCountingConfig = []; // Array of {label, line: [[x1, y1], [x2, y2]]}
+    
     let isDrawing = false;
+    let drawingType = 'roi'; // 'roi', 'display', 'front', 'rear'
     let tempPoints = [];
 
     const canvas = document.getElementById('theft-canvas');
@@ -255,45 +323,135 @@
         resizeCanvas();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        let pts = isDrawing ? tempPoints : camTheftZone;
-        if (pts.length === 0) return;
-
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0] * canvas.width, pts[0][1] * canvas.height);
-        for (let i = 1; i < pts.length; i++) {
-            ctx.lineTo(pts[i][0] * canvas.width, pts[i][1] * canvas.height);
-        }
-        
-        if (!isDrawing && pts.length > 2) {
-            ctx.closePath();
-            ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; 
-            ctx.fill();
-        }
-        
-        ctx.strokeStyle = '#EF4444'; 
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        pts.forEach(p => {
+        // Draw ROI (Polygons)
+        let pts = (isDrawing && drawingType === 'roi') ? tempPoints : camTheftZone;
+        if (pts.length > 0) {
             ctx.beginPath();
-            ctx.arc(p[0] * canvas.width, p[1] * canvas.height, 4, 0, 2 * Math.PI);
-            ctx.fillStyle = '#EF4444';
-            ctx.fill();
+            ctx.moveTo(pts[0][0] * canvas.width, pts[0][1] * canvas.height);
+            for (let i = 1; i < pts.length; i++) {
+                ctx.lineTo(pts[i][0] * canvas.width, pts[i][1] * canvas.height);
+            }
+            if (!isDrawing && pts.length > 2) {
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; 
+                ctx.fill();
+            }
+            ctx.strokeStyle = '#EF4444'; 
+            ctx.lineWidth = 2;
             ctx.stroke();
+            pts.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p[0] * canvas.width, p[1] * canvas.height, 4, 0, 2 * Math.PI);
+                ctx.fillStyle = '#EF4444'; ctx.fill(); ctx.stroke();
+            });
+        }
+
+        // Draw Display Zone (Cyan polygon)
+        let displayPts = (isDrawing && drawingType === 'display') ? tempPoints : camDisplayZone;
+        if (displayPts.length > 0) {
+            ctx.beginPath();
+            ctx.moveTo(displayPts[0][0] * canvas.width, displayPts[0][1] * canvas.height);
+            for (let i = 1; i < displayPts.length; i++) {
+                ctx.lineTo(displayPts[i][0] * canvas.width, displayPts[i][1] * canvas.height);
+            }
+            if (!isDrawing && displayPts.length > 2) {
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(6, 182, 212, 0.2)';
+                ctx.fill();
+            }
+            ctx.strokeStyle = '#06B6D4';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            displayPts.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p[0] * canvas.width, p[1] * canvas.height, 4, 0, 2 * Math.PI);
+                ctx.fillStyle = '#06B6D4'; ctx.fill(); ctx.stroke();
+            });
+        }
+
+        // Draw Counting Lines
+        camCountingConfig.forEach(door => {
+            const l = door.line;
+            ctx.beginPath();
+            ctx.moveTo(l[0][0] * canvas.width, l[0][1] * canvas.height);
+            ctx.lineTo(l[1][0] * canvas.width, l[1][1] * canvas.height);
+            ctx.strokeStyle = '#10B981'; ctx.lineWidth = 3; ctx.stroke();
+            
+            ctx.fillStyle = '#10B981'; ctx.font = '10px Arial';
+            ctx.fillText(door.label, l[0][0] * canvas.width, l[0][1] * canvas.height - 5);
         });
+
+        // Draw active line if drawing door
+        if (isDrawing && (drawingType === 'front' || drawingType === 'rear')) {
+            if (tempPoints.length > 0) {
+                ctx.beginPath();
+                ctx.arc(tempPoints[0][0] * canvas.width, tempPoints[0][1] * canvas.height, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = '#10B981'; ctx.fill();
+                
+                // Live preview line to mouse
+                if (tempPoints.length === 1 && lastMousePos) {
+                    ctx.beginPath();
+                    ctx.moveTo(tempPoints[0][0] * canvas.width, tempPoints[0][1] * canvas.height);
+                    ctx.lineTo(lastMousePos.x * canvas.width, lastMousePos.y * canvas.height);
+                    ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)'; ctx.setLineDash([5, 5]); ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+            if (tempPoints.length === 2) {
+                ctx.beginPath();
+                ctx.moveTo(tempPoints[0][0] * canvas.width, tempPoints[0][1] * canvas.height);
+                ctx.lineTo(tempPoints[1][0] * canvas.width, tempPoints[1][1] * canvas.height);
+                ctx.strokeStyle = '#10B981'; ctx.lineWidth = 3; ctx.setLineDash([5, 5]); // Dash for preview
+                ctx.stroke();
+                ctx.setLineDash([]); // Reset
+                
+                ctx.beginPath();
+                ctx.arc(tempPoints[1][0] * canvas.width, tempPoints[1][1] * canvas.height, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = '#10B981'; ctx.fill();
+            }
+        }
     }
 
     window.addEventListener('resize', redrawCanvas);
 
     document.getElementById('btn-draw-roi').addEventListener('click', () => {
-        isDrawing = true;
+        isDrawing = true; drawingType = 'roi';
+        startDrawing();
+    });
+
+    document.getElementById('btn-draw-display').addEventListener('click', () => {
+        isDrawing = true; drawingType = 'display';
+        startDrawing();
+    });
+
+    document.getElementById('btn-draw-front').addEventListener('click', () => {
+        isDrawing = true; drawingType = 'front';
+        startDrawing();
+    });
+
+    document.getElementById('btn-draw-rear').addEventListener('click', () => {
+        isDrawing = true; drawingType = 'rear';
+        startDrawing();
+    });
+
+    function startDrawing() {
         tempPoints = [];
         canvas.classList.remove('hidden', 'pointer-events-none');
-        document.getElementById('btn-draw-roi').classList.add('hidden');
+        document.querySelectorAll('#roi-controls button').forEach(b => b.classList.add('hidden'));
         document.getElementById('btn-save-roi').classList.remove('hidden');
-        document.getElementById('btn-clear-roi').classList.add('hidden');
         resizeCanvas();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    let lastMousePos = null;
+    canvas.addEventListener('mousemove', (e) => {
+        if (!isDrawing) return;
+        const rect = canvas.getBoundingClientRect();
+        lastMousePos = {
+            x: (e.clientX - rect.left) / canvas.width,
+            y: (e.clientY - rect.top) / canvas.height
+        };
+        if (tempPoints.length > 0) redrawCanvas();
     });
 
     canvas.addEventListener('click', (e) => {
@@ -301,44 +459,90 @@
         const rect = canvas.getBoundingClientRect();
         const x = (e.clientX - rect.left) / canvas.width;
         const y = (e.clientY - rect.top) / canvas.height;
+        
+        if ((drawingType === 'front' || drawingType === 'rear') && tempPoints.length >= 2) {
+            return; // Only 2 points for doors
+        }
+        
         tempPoints.push([x, y]);
         redrawCanvas();
+
+        if ((drawingType === 'front' || drawingType === 'rear') && tempPoints.length === 2) {
+            // Auto finish for lines? No, let user confirm with save button
+        }
     });
 
     document.getElementById('btn-save-roi').addEventListener('click', async () => {
-        if (tempPoints.length < 3) {
-            alert('Пожалуйста, поставьте минимум 3 точки для создания зоны.');
-            return;
+        if ((drawingType === 'roi' || drawingType === 'display') && tempPoints.length < 3) {
+            alert('Пожалуйста, поставьте минимум 3 точки для создания зоны.'); return;
+        }
+        if ((drawingType === 'front' || drawingType === 'rear') && tempPoints.length < 2) {
+            alert('Пожалуйста, поставьте 2 точки для линии двери.'); return;
+        }
+
+        const data = {};
+        if (drawingType === 'roi') {
+            camTheftZone = tempPoints;
+            data.theft_zone = JSON.stringify(camTheftZone);
+        } else if (drawingType === 'display') {
+            camDisplayZone = tempPoints;
+            data.display_zone = JSON.stringify(camDisplayZone);
+        } else {
+            const label = drawingType === 'front' ? 'Передняя дверь' : 'Задняя дверь';
+            // Update or add to config
+            let existing = camCountingConfig.find(d => d.label === label);
+            if (existing) {
+                existing.line = tempPoints;
+            } else {
+                camCountingConfig.push({ label: label, line: tempPoints });
+            }
+            data.counting_config = JSON.stringify(camCountingConfig);
         }
 
         isDrawing = false;
-        camTheftZone = tempPoints;
         canvas.classList.add('pointer-events-none');
-        document.getElementById('btn-draw-roi').classList.remove('hidden');
+        document.querySelectorAll('#roi-controls button').forEach(b => b.classList.remove('hidden'));
         document.getElementById('btn-save-roi').classList.add('hidden');
-        document.getElementById('btn-clear-roi').classList.remove('hidden');
         redrawCanvas();
+        updateDrawingButtons();
 
         await fetch(`/api/cameras/${camId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theft_zone: JSON.stringify(camTheftZone) })
+            body: JSON.stringify(data)
         });
     });
 
     document.getElementById('btn-clear-roi').addEventListener('click', async () => {
-        if (!confirm('Сбросить зону защиты и проверять весь кадр?')) return;
+        if (!confirm('Сбросить все зоны и линии для этой камеры?')) return;
         camTheftZone = [];
+        camDisplayZone = [];
+        camCountingConfig = [];
         isDrawing = false;
         canvas.classList.add('hidden', 'pointer-events-none');
-        document.getElementById('btn-clear-roi').classList.add('hidden');
         redrawCanvas();
 
         await fetch(`/api/cameras/${camId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theft_zone: null })
+            body: JSON.stringify({ theft_zone: null, counting_config: null, display_zone: null })
         });
+    });
+
+    function updateDrawingButtons() {
+        const isTheft = document.getElementById('check-theft').checked;
+        const isPass = document.getElementById('check-passengers').checked;
+        const isShoplift = document.getElementById('check-shoplifting').checked;
+        
+        document.getElementById('btn-draw-roi').style.display = isTheft ? 'inline-block' : 'none';
+        document.getElementById('btn-draw-display').style.display = isShoplift ? 'inline-block' : 'none';
+        document.getElementById('btn-draw-front').style.display = isPass ? 'inline-block' : 'none';
+        document.getElementById('btn-draw-rear').style.display = isPass ? 'inline-block' : 'none';
+    }
+
+    // Add listeners to toggles to update UI immediately
+    ['check-theft', 'check-passengers', 'check-shoplifting'].forEach(id => {
+        document.getElementById(id).addEventListener('change', updateDrawingButtons);
     });
 
     loadDetails();
@@ -352,7 +556,7 @@
 
     .toggle-checkbox {
         position: relative;
-        border: 2px solid theme('colors.gray.500');
+        border: 2px solid #6B7280;
     }
 
     .toggle-checkbox::after {
@@ -370,6 +574,25 @@
 
     .toggle-checkbox:checked::after {
         left: calc(100% - 1.25rem - 2px);
+    }
+
+    .toggle-checkbox-sm {
+        position: relative;
+        transition: background-color 0.2s;
+    }
+    .toggle-checkbox-sm::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 12px;
+        height: 12px;
+        background: white;
+        border-radius: 50%;
+        transition: left 0.2s;
+    }
+    .toggle-checkbox-sm:checked::after {
+        left: 18px;
     }
 </style>
 {% endblock %}

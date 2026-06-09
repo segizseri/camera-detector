@@ -32,7 +32,7 @@ class ActionLSTM(nn.Module):
         return logits
 
 def create_or_load_model(weights_path="action_lstm.pt"):
-    model = ActionLSTM(num_keypoints=17, hidden_dim=64, num_layers=2, num_classes=4)
+    model = ActionLSTM(num_keypoints=17, hidden_dim=64, num_layers=2, num_classes=5)
     if os.path.exists(weights_path):
         model.load_state_dict(torch.load(weights_path, map_location="cpu"))
         print(f"Loaded AI Action Detector weights from {weights_path}")

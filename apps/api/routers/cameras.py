@@ -36,6 +36,20 @@ def update_camera(camera_id: str, update: CameraUpdate, db: Session = Depends(ge
         cam.fps_limit = update.fps_limit
     if update.theft_zone is not None:
         cam.theft_zone = update.theft_zone
+    if update.counting_config is not None:
+        cam.counting_config = update.counting_config
+    if update.detect_fights is not None:
+        cam.detect_fights = update.detect_fights
+    if update.detect_bullying is not None:
+        cam.detect_bullying = update.detect_bullying
+    if update.detect_theft is not None:
+        cam.detect_theft = update.detect_theft
+    if update.detect_passengers is not None:
+        cam.detect_passengers = update.detect_passengers
+    if update.detect_shoplifting is not None:
+        cam.detect_shoplifting = update.detect_shoplifting
+    if update.display_zone is not None:
+        cam.display_zone = update.display_zone
         
     db.commit()
     db.refresh(cam)

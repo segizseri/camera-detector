@@ -32,6 +32,13 @@ class CameraUpdate(BaseModel):
     ai_enabled: Optional[bool] = None
     fps_limit: Optional[int] = None
     theft_zone: Optional[str] = None
+    counting_config: Optional[str] = None
+    detect_fights: Optional[bool] = None
+    detect_bullying: Optional[bool] = None
+    detect_theft: Optional[bool] = None
+    detect_passengers: Optional[bool] = None
+    detect_shoplifting: Optional[bool] = None
+    display_zone: Optional[str] = None
 
 class RTSPTestResult(BaseModel):
     status: str
@@ -40,12 +47,14 @@ class RTSPTestResult(BaseModel):
 
 class WebhookCreate(BaseModel):
     name: str
+    hook_type: str = "http"
     url: str
     secret: str
     enabled: bool = True
 
 class WebhookUpdate(BaseModel):
     name: Optional[str] = None
+    hook_type: Optional[str] = None
     url: Optional[str] = None
     secret: Optional[str] = None
     enabled: Optional[bool] = None

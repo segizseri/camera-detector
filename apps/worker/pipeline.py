@@ -7,7 +7,7 @@ from collections import deque
 from datetime import datetime
 from libs.database import SessionLocal
 from libs.models import Event, Camera
-from libs.rules import PersonDetector, AIActionDetector
+from libs.rules import PersonDetector, AIActionDetector, PassengerCounter
 from libs.webhooks import queue_webhook
 from libs.config import settings
 
@@ -24,9 +24,18 @@ class CameraPipeline:
         self.running = True
         self.person_det = PersonDetector(camera_id)
         self.action_det = AIActionDetector(camera_id)
+        self.passenger_counter = PassengerCounter(camera_id)
         
         self.last_sync_time = 0
+        self.last_db_save = 0
         self.last_res = None
+        self.counting_config = None
+        self.detect_fights = True
+        self.detect_bullying = True
+        self.detect_theft = True
+        self.detect_passengers = True
+        self.detect_shoplifting = True
+        self.display_zone = None
         
         self.ingest_thread = threading.Thread(target=self._ingest_loop, daemon=True)
         self.ingest_thread.start()
@@ -100,6 +109,17 @@ class CameraPipeline:
         has_person, n_people = self.person_det.check_alert(bboxes)
         action_class, action_prob = self.action_det.add_frame(bboxes, keypoints, timestamp)
         
+        # Passenger Counting
+        if self.detect_passengers:
+            ids = res.boxes.id.cpu().numpy().tolist() if res.boxes.id is not None else None
+            if ids:
+                h, w = frame.shape[:2]
+                # Normalize boxes for the counter
+                norm_boxes = []
+                for b in bboxes:
+                    norm_boxes.append([b[0]/w, b[1]/h, b[2]/w, b[3]/h])
+                self.passenger_counter.update(norm_boxes, ids, self.counting_config)
+        
         # Store for snapshot drawing
         self.last_res = res
         
@@ -107,9 +127,16 @@ class CameraPipeline:
         
         # 1: Fight, 2: Bullying, 3: Theft
         if action_class > 0:
-            if action_prob > self.action_det.thresholds.get(action_class, 0.6):
+            # Check feature flags
+            if action_class == 1 and not self.detect_fights: action_class = 0
+            if action_class == 2 and not self.detect_bullying: action_class = 0
+            if action_class == 3 and not self.detect_theft: action_class = 0
+            if action_class == 4 and not self.detect_shoplifting: action_class = 0
+            
+            if action_class > 0 and action_prob > self.action_det.thresholds.get(action_class, 0.6):
                 
                 # Check Theft Zone
+                # ROI check for cash register theft (class 3)
                 if action_class == 3 and hasattr(self, 'theft_zone') and self.theft_zone:
                     try:
                         import json, numpy as np, cv2
@@ -131,10 +158,32 @@ class CameraPipeline:
                     except Exception as e:
                         print(f"Error evaluating theft zone ROI: {e}")
 
+                # ROI check for display case shoplifting (class 4)
+                if action_class == 4 and hasattr(self, 'display_zone') and self.display_zone:
+                    try:
+                        import json, numpy as np, cv2
+                        zone_pts = json.loads(self.display_zone)
+                        if len(zone_pts) >= 3:
+                            h, w = frame.shape[:2]
+                            contour = np.array([[[int(p[0]*w), int(p[1]*h)]] for p in zone_pts], dtype=np.int32)
+                            
+                            is_inside = False
+                            for box in bboxes:
+                                cx = (box[0] + box[2]) / 2.0
+                                cy = (box[1] + box[3]) / 2.0
+                                if cv2.pointPolygonTest(contour, (float(cx), float(cy)), False) >= 0:
+                                    is_inside = True
+                                    break
+                                    
+                            if not is_inside:
+                                return # Skip detection if out of display zone!
+                    except Exception as e:
+                        print(f"Error evaluating display zone ROI: {e}")
+
                 if now - self.action_det.last_alerts.get(action_class, 0) > self.action_det.cooldowns.get(action_class, 30):
                     self.action_det.last_alerts[action_class] = now
                     
-                    event_types = {1: "fight_suspected", 2: "bullying_suspected", 3: "theft_suspected"}
+                    event_types = {1: "fight_suspected", 2: "bullying_suspected", 3: "theft_suspected", 4: "shoplifting_suspected"}
                     event_type = event_types[action_class]
                     self._trigger_event(event_type, float(action_prob), res, frame)
             
@@ -142,6 +191,46 @@ class CameraPipeline:
         if now - self.last_sync_time > 10:
             self.last_sync_time = now
             self._sync_and_status()
+            
+        # Save counts to DB periodically (every 60 seconds or on exit)
+        if now - self.last_db_save > 60:
+            self.last_db_save = now
+            self._save_passenger_stats()
+
+    def _save_passenger_stats(self):
+        from libs.models import PassengerCount
+        from datetime import datetime, date
+        db = SessionLocal()
+        try:
+            today = date.today()
+            for label, stats in self.passenger_counter.counts.items():
+                # Find existing record for today or create new
+                # For simplicity, we use start of day as the 'date' field or just aggregate
+                # In a real app, we might want hourly bins
+                record = db.query(PassengerCount).filter(
+                    PassengerCount.camera_id == self.camera_id,
+                    PassengerCount.door_label == label
+                    # Filter by date... (simplified here)
+                ).order_by(PassengerCount.date.desc()).first()
+                
+                # If record is from today, update it, else create new
+                if record and record.date.date() == today:
+                    record.count_in = stats['in']
+                    record.count_out = stats['out']
+                else:
+                    new_record = PassengerCount(
+                        camera_id=self.camera_id,
+                        door_label=label,
+                        count_in=stats['in'],
+                        count_out=stats['out'],
+                        date=datetime.now()
+                    )
+                    db.add(new_record)
+            db.commit()
+        except Exception as e:
+            print(f"Error saving passenger stats: {e}")
+        finally:
+            db.close()
 
     def _sync_and_status(self):
         from libs.models import GlobalSetting
@@ -153,6 +242,13 @@ class CameraPipeline:
                 cam.status = "online"
                 cam.last_seen = datetime.utcnow()
                 self.theft_zone = cam.theft_zone
+                self.display_zone = cam.display_zone
+                self.counting_config = cam.counting_config
+                self.detect_fights = cam.detect_fights
+                self.detect_bullying = cam.detect_bullying
+                self.detect_theft = cam.detect_theft
+                self.detect_passengers = cam.detect_passengers
+                self.detect_shoplifting = cam.detect_shoplifting
             
             # Settings sync
             settings = {s.key: s.value for s in db.query(GlobalSetting).all()}
@@ -195,7 +291,8 @@ class CameraPipeline:
                 'person_detected': 'ОБНАРУЖЕН ЧЕЛОВЕК',
                 'fight_suspected': 'ПОДОЗРЕНИЕ НА ДРАКУ',
                 'bullying_suspected': 'ПОДОЗРЕНИЕ НА БУЛЛИНГ',
-                'theft_suspected': 'ПОДОЗРЕНИЕ НА КРАЖУ'
+                'theft_suspected': 'ПОДОЗРЕНИЕ НА КРАЖУ',
+                'shoplifting_suspected': 'ПОДОЗРЕНИЕ НА КРАЖУ ИЗ ВИТРИНЫ'
             }
             label = label_map.get(event_type, event_type).upper()
             

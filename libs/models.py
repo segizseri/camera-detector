@@ -3,11 +3,23 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from libs.database import Base
 
+class Bus(Base):
+    __tablename__ = "buses"
+
+    id = Column(String, primary_key=True, index=True)
+    name = Column(String, index=True)
+    license_plate = Column(String, nullable=True)
+    
+    cameras = relationship("Camera", back_populates="bus")
+
 class Camera(Base):
     __tablename__ = "cameras"
 
     id = Column(String, primary_key=True, index=True)
+    bus_id = Column(String, ForeignKey("buses.id"), nullable=True)
     name = Column(String, index=True)
+    
+    bus = relationship("Bus", back_populates="cameras")
     nvr_ip = Column(String)
     rtsp_url = Column(String)
     username = Column(String)
@@ -18,11 +30,30 @@ class Camera(Base):
     ai_enabled = Column(Boolean, default=True)
     fps_limit = Column(Integer, default=5)
     theft_zone = Column(Text, nullable=True)
+    counting_config = Column(Text, nullable=True) # JSON with lines/zones
+    
+    # Granular AI Features
+    detect_fights = Column(Boolean, default=True)
+    detect_bullying = Column(Boolean, default=True)
+    detect_theft = Column(Boolean, default=True)
+    detect_passengers = Column(Boolean, default=True)
+    detect_shoplifting = Column(Boolean, default=True)
+    display_zone = Column(Text, nullable=True)  # JSON polygon for display case ROI
     
     status = Column(String, default="offline") # offline, online, error
     last_seen = Column(DateTime, nullable=True)
     
     events = relationship("Event", back_populates="camera", cascade="all, delete-orphan")
+
+class PassengerCount(Base):
+    __tablename__ = "passenger_counts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    camera_id = Column(String, ForeignKey("cameras.id"))
+    date = Column(DateTime, default=datetime.utcnow)
+    door_label = Column(String) # e.g. "Front Door", "Rear Door"
+    count_in = Column(Integer, default=0)
+    count_out = Column(Integer, default=0)
 
 class Event(Base):
     __tablename__ = "events"
@@ -44,6 +75,7 @@ class Webhook(Base):
     __tablename__ = "webhooks"
 
     id = Column(String, primary_key=True, index=True)
+    hook_type = Column(String, default="http")
     name = Column(String)
     url = Column(String)
     secret = Column(String)

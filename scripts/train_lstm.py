@@ -10,7 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from libs.ai_models import ActionLSTM
 
 DATASET_DIR = "data/dataset"
-CLASSES = {"0_normal": 0, "1_fight": 1, "2_bullying": 2, "3_theft": 3}
+CLASSES = {"0_normal": 0, "1_fight": 1, "2_bullying": 2, "3_theft": 3, "4_shoplifting": 4}
 
 def extract_from_videos(seq_len=30):
     import cv2
@@ -101,7 +101,7 @@ def create_synthetic_data(num_samples=1000, seq_len=30):
     X = np.zeros((num_samples, seq_len, 34), dtype=np.float32)
     y = np.zeros((num_samples,), dtype=np.int64)
     for i in range(num_samples):
-        cls = np.random.randint(0, 4)
+        cls = np.random.randint(0, 5)
         y[i] = cls
         for t in range(seq_len):
             kps = np.random.randn(17, 2) * 0.05
@@ -116,12 +116,26 @@ def create_synthetic_data(num_samples=1000, seq_len=30):
             elif cls == 3:
                 kps[9, 0] += 0.4
                 kps[9, 1] -= 0.2
+            elif cls == 4:
+                # Shoplifting: arm extends out then retracts to hip
+                phase = t / seq_len
+                if phase < 0.4:
+                    # Reach out to display
+                    kps[9, 0] += 0.4 * (phase / 0.4)
+                    kps[10, 0] += 0.3 * (phase / 0.4)
+                else:
+                    # Conceal: hand returns to hip area quickly
+                    retract = (phase - 0.4) / 0.6
+                    kps[9, 0] += 0.4 * (1 - retract)
+                    kps[9, 1] += 0.25 * retract  # move toward hip
+                    kps[10, 0] += 0.3 * (1 - retract)
+                    kps[10, 1] += 0.25 * retract
             X[i, t, :] = kps.flatten()
     return torch.tensor(X), torch.tensor(y)
 
 def train_model(epochs=15, batch_size=16, save_path="action_lstm.pt"):
-    print("Initializing ActionLSTM Model (4 Classes)...")
-    model = ActionLSTM(num_keypoints=17, hidden_dim=64, num_layers=2, num_classes=4)
+    print("Initializing ActionLSTM Model (5 Classes)...")
+    model = ActionLSTM(num_keypoints=17, hidden_dim=64, num_layers=2, num_classes=5)
     criterion = nn.CrossEntropyLoss()
     optimizer = opt.Adam(model.parameters(), lr=0.001)
     

@@ -2,12 +2,36 @@ import os
 from fastapi import FastAPI, Depends, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from libs.database import engine, Base
 from libs.models import Camera, Event, Webhook
-from apps.api.routers import nvr, cameras, events, webhooks, settings
+from apps.api.routers import nvr, cameras, events, webhooks, settings, stats, buses
 
 Base.metadata.create_all(bind=engine)
+
+# Auto-migration: Create default bus for cameras without one
+def migrate_buses():
+    from libs.database import SessionLocal
+    from libs.models import Bus, Camera
+    import uuid
+    db = SessionLocal()
+    try:
+        cams_without_bus = db.query(Camera).filter(Camera.bus_id == None).all()
+        if cams_without_bus:
+            default_bus = db.query(Bus).filter(Bus.name == "Default Bus").first()
+            if not default_bus:
+                default_bus = Bus(id=str(uuid.uuid4()), name="Default Bus", license_plate="AUTO")
+                db.add(default_bus)
+                db.commit()
+                db.refresh(default_bus)
+            
+            for cam in cams_without_bus:
+                cam.bus_id = default_bus.id
+            db.commit()
+    finally:
+        db.close()
+
+migrate_buses()
 
 app = FastAPI(title="Camera Detector AI Box")
 
@@ -26,6 +50,12 @@ app.include_router(cameras.router, prefix="/api/cameras", tags=["Cameras"])
 app.include_router(events.router, prefix="/api/events", tags=["Events"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
+app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
+app.include_router(buses.router, prefix="/api/buses", tags=["Buses"])
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse("apps/api/static/favicon.png")
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
@@ -58,3 +88,11 @@ async def webhooks_page(request: Request):
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     return templates.TemplateResponse("settings.html", {"request": request})
+
+@app.get("/reports/passengers", response_class=HTMLResponse)
+async def passenger_report_page(request: Request):
+    return templates.TemplateResponse("passenger_report.html", {"request": request})
+
+@app.get("/buses", response_class=HTMLResponse)
+async def buses_page(request: Request):
+    return templates.TemplateResponse("buses.html", {"request": request})

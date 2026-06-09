@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Laptop AI Box{% endblock %}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link href="/static/styles.css" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <!-- HLS.js for viewing video feeds -->
@@ -20,10 +21,12 @@
         </div>
         <div class="flex gap-4">
             <a href="/" class="hover:text-blue-400"><i class="fas fa-tachometer-alt"></i> Главная</a>
+            <a href="/buses" class="hover:text-blue-400"><i class="fas fa-bus"></i> Автобусы</a>
             <a href="/nvr" class="hover:text-blue-400"><i class="fas fa-network-wired"></i> Настройка NVR</a>
             <a href="/cameras" class="hover:text-blue-400"><i class="fas fa-video"></i> Камеры</a>
             <a href="/ai" class="hover:text-blue-400"><i class="fas fa-brain"></i> ИИ Операции</a>
             <a href="/events-page" class="hover:text-blue-400"><i class="fas fa-bell"></i> События</a>
+            <a href="/reports/passengers" class="hover:text-blue-400"><i class="fas fa-chart-bar"></i> Отчеты</a>
             <a href="/integrations/webhooks" class="hover:text-blue-400"><i class="fas fa-link"></i> Вебхуки</a>
             <a href="/settings" class="hover:text-blue-400"><i class="fas fa-cog"></i> Настройки</a>
         </div>

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Управление автобусами | Laptop AI Box{% endblock %}
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold">Управление автобусами</h1>
+    <button id="btn-add-bus" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition">
+        <i class="fas fa-plus mr-2"></i> Добавить автобус
+    </button>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="bus-list">
+    <!-- Buses will be loaded here -->
+</div>
+
+<!-- Add Bus Modal -->
+<div id="modal-bus" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+    <div class="bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-700 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Новый автобус</h2>
+        <form id="bus-form" class="space-y-4">
+            <div>
+                <label class="block text-sm text-gray-400">Название (например: Маршрут №101)</label>
+                <input type="text" id="bus-name" required class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400">Гос. номер</label>
+                <input type="text" id="bus-plate" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" id="btn-close-modal" class="px-4 py-2 text-gray-400 hover:text-white">Отмена</button>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded font-bold">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    async function loadBuses() {
+        const res = await fetch('/api/buses/');
+        const buses = await res.json();
+        const list = document.getElementById('bus-list');
+        
+        if (buses.length === 0) {
+            list.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500 italic">Автобусы не найдены. Добавьте свой первый автобус!</div>';
+            return;
+        }
+
+        list.innerHTML = buses.map(bus => `
+            <div class="bg-gray-800 rounded-lg border border-gray-700 shadow-lg overflow-hidden group">
+                <div class="p-5">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-100">${bus.name}</h3>
+                            <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest">${bus.license_plate || 'БЕЗ НОМЕРА'}</p>
+                        </div>
+                        <i class="fas fa-bus text-3xl text-blue-500/20 group-hover:text-blue-500/50 transition-colors"></i>
+                    </div>
+                    
+                    <div class="flex items-center gap-2 text-sm text-gray-400 mb-6">
+                        <i class="fas fa-video"></i>
+                        <span>Привязано камер: ${bus.cameras ? bus.cameras.length : 0}</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <a href="/cameras" class="bg-gray-700 hover:bg-gray-600 text-white text-center py-2 rounded text-sm transition">
+                            Камеры
+                        </a>
+                        <button onclick="deleteBus('${bus.id}')" class="bg-red-900/20 hover:bg-red-600 text-red-500 hover:text-white py-2 rounded text-sm transition">
+                            Удалить
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    const modal = document.getElementById('modal-bus');
+    document.getElementById('btn-add-bus').addEventListener('click', () => modal.classList.replace('hidden', 'flex'));
+    document.getElementById('btn-close-modal').addEventListener('click', () => modal.classList.replace('flex', 'hidden'));
+
+    document.getElementById('bus-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = {
+            name: document.getElementById('bus-name').value,
+            license_plate: document.getElementById('bus-plate').value
+        };
+        await fetch('/api/buses/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        modal.classList.replace('flex', 'hidden');
+        loadBuses();
+    });
+
+    async function deleteBus(id) {
+        if (!confirm('Вы уверены? Камеры не будут удалены, они просто отвяжутся от автобуса.')) return;
+        await fetch(`/api/buses/${id}`, { method: 'DELETE' });
+        loadBuses();
+    }
+
+    loadBuses();
+</script>
+{% endblock %}

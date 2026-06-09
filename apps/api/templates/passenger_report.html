@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Отчет по пассажирам | Laptop AI Box{% endblock %}
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold">Отчет по пассажиропотоку</h1>
+    <div class="flex gap-4 items-center bg-gray-800 p-2 rounded-lg border border-gray-700">
+        <label class="text-sm text-gray-400">Выберите дату:</label>
+        <input type="date" id="report-date" class="bg-gray-700 border border-gray-600 rounded text-white px-2 py-1 text-sm focus:ring-blue-500">
+        <button id="btn-refresh" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1 rounded text-sm transition shadow">Обновить</button>
+    </div>
+</div>
+
+<div class="bg-gray-800 rounded-lg shadow-xl overflow-hidden border border-gray-700">
+    <div class="overflow-x-auto">
+        <table class="w-full text-left">
+            <thead>
+                <tr class="bg-gray-900/50 text-gray-400 text-xs uppercase tracking-wider">
+                    <th class="px-6 py-4">Камера / Автобус</th>
+                    <th class="px-6 py-4">Дверь / Зона</th>
+                    <th class="px-6 py-4 text-center">Вошло</th>
+                    <th class="px-6 py-4 text-center">Вышло</th>
+                    <th class="px-6 py-4 text-center">Всего</th>
+                    <th class="px-6 py-4">Дата обновления</th>
+                </tr>
+            </thead>
+            <tbody id="report-body" class="divide-y divide-gray-700">
+                <!-- Data will be loaded here -->
+            </tbody>
+        </table>
+    </div>
+    <div id="no-data" class="hidden p-12 text-center text-gray-500 italic">
+        <i class="fas fa-search text-4xl mb-4 opacity-20"></i>
+        <p>За выбранную дату данных о пассажирах не найдено.</p>
+    </div>
+</div>
+
+<script>
+    const dateInput = document.getElementById('report-date');
+    const refreshBtn = document.getElementById('btn-refresh');
+    const tableBody = document.getElementById('report-body');
+    const noData = document.getElementById('no-data');
+
+    // Default to today
+    dateInput.valueAsDate = new Date();
+
+    async function loadReport() {
+        const selectedDate = dateInput.value;
+        tableBody.innerHTML = '<tr><td colspan="6" class="p-8 text-center"><i class="fas fa-circle-notch fa-spin mr-2"></i> Загрузка данных...</td></tr>';
+        noData.classList.add('hidden');
+
+        try {
+            const res = await fetch(`/api/stats/passengers?date_str=${selectedDate}`);
+            const data = await res.json();
+            
+            if (data.length === 0) {
+                tableBody.innerHTML = '';
+                noData.classList.remove('hidden');
+                return;
+            }
+
+            tableBody.innerHTML = data.map(row => `
+                <tr class="hover:bg-gray-700/50 transition-colors">
+                    <td class="px-6 py-4 font-medium text-gray-200">${row.camera_id}</td>
+                    <td class="px-6 py-4 text-gray-300">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-900/30 text-blue-400">
+                            ${row.door_label}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-center text-green-400 font-bold text-lg">${row.count_in}</td>
+                    <td class="px-6 py-4 text-center text-red-400 font-bold text-lg">${row.count_out}</td>
+                    <td class="px-6 py-4 text-center text-gray-400">${row.count_in + row.count_out}</td>
+                    <td class="px-6 py-4 text-xs text-gray-500">${new Date(row.date).toLocaleString()}</td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            tableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-red-500">Ошибка загрузки: ${e}</td></tr>`;
+        }
+    }
+
+    refreshBtn.addEventListener('click', loadReport);
+    dateInput.addEventListener('change', loadReport);
+    loadReport();
+</script>
+{% endblock %}

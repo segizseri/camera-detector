@@ -8,6 +8,7 @@
             <option value="all">Все типы</option>
             <option value="fight_suspected">Драка</option>
             <option value="theft_suspected">Кража / Воровство</option>
+            <option value="shoplifting_suspected">Кража из витрины</option>
             <option value="person_detected">Человек</option>
             <option value="camera_offline">Оффлайн</option>
         </select>
@@ -56,6 +57,7 @@
                 'person_detected': 'Обнаружен человек',
                 'fight_suspected': 'Подозрение на драку',
                 'theft_suspected': 'Подозрение на кражу',
+                'shoplifting_suspected': 'Кража из витрины',
                 'camera_offline': 'Камера отключена'
             };
 
@@ -66,6 +68,7 @@
                     <div class="w-12 h-12 flex-shrink-0 bg-gray-800 rounded flex items-center justify-center mr-4">
                         ${e.event_type.includes('person') ? '<i class="fas fa-user-friends text-blue-500 text-xl"></i>' :
                     e.event_type.includes('fight') ? '<i class="fas fa-exclamation-triangle text-red-500 text-xl"></i>' :
+                    e.event_type.includes('shoplifting') ? '<i class="fas fa-store-slash text-teal-500 text-xl"></i>' :
                     e.event_type.includes('theft') ? '<i class="fas fa-hand-holding-box text-purple-500 text-xl"></i>' :
                         '<i class="fas fa-video-slash text-yellow-500 text-xl"></i>'}
                     </div>

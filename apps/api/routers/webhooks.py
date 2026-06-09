@@ -15,6 +15,7 @@ def get_webhooks(db: Session = Depends(get_db)):
 def create_webhook(webhook: WebhookCreate, db: Session = Depends(get_db)):
     wh = Webhook(
         id=str(uuid.uuid4()),
+        hook_type=webhook.hook_type,
         name=webhook.name,
         url=webhook.url,
         secret=webhook.secret,
@@ -33,6 +34,8 @@ def update_webhook(webhook_id: str, update: WebhookUpdate, db: Session = Depends
         
     if update.name is not None:
         wh.name = update.name
+    if update.hook_type is not None:
+        wh.hook_type = update.hook_type
     if update.url is not None:
         wh.url = update.url
     if update.secret is not None:
@@ -46,10 +49,12 @@ def update_webhook(webhook_id: str, update: WebhookUpdate, db: Session = Depends
 
 @router.delete("/{webhook_id}")
 def delete_webhook(webhook_id: str, db: Session = Depends(get_db)):
+    from libs.models import WebhookDelivery
     wh = db.query(Webhook).filter(Webhook.id == webhook_id).first()
     if not wh:
         raise HTTPException(status_code=404, detail="Webhook not found")
         
+    db.query(WebhookDelivery).filter(WebhookDelivery.webhook_id == webhook_id).delete()
     db.delete(wh)
     db.commit()
     return {"status": "success"}
