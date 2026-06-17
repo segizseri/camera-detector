@@ -61,8 +61,15 @@ def delete_webhook(webhook_id: str, db: Session = Depends(get_db)):
 @router.post("/{webhook_id}/test")
 def test_webhook(webhook_id: str):
     from libs.webhooks import send_test_webhook
-    status_code = send_test_webhook(webhook_id)
-    if status_code and status_code < 400:
-        return {"status": "success", "http_code": status_code}
-    else:
-        raise HTTPException(status_code=500, detail=f"Failed to send test webhook. Server returned {status_code}")
+    try:
+        status_code = send_test_webhook(webhook_id)
+        if status_code and status_code < 400:
+            return {"status": "success", "http_code": status_code}
+        else:
+            raise HTTPException(status_code=400, detail=f"Тест не удался. Удаленный сервер (Telegram) вернул код ошибки: {status_code}. Проверьте правильность токена бота и Chat ID, а также убедитесь, что бот имеет доступ к чату.")
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Error: {str(e)}")

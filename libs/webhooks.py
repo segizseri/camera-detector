@@ -96,13 +96,17 @@ def send_test_webhook(hook_id):
             bot_token = hook.secret
             message = "✅ Тестовое уведомление из Laptop AI Box\nИнтеграция с Telegram работает корректно!"
             
-            res = requests.post(
-                f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={"chat_id": chat_id, "text": message},
-                timeout=5
-            )
-            print(f"Test Telegram Webhook {chat_id} returned {res.status_code}")
-            return res.status_code
+            try:
+                res = requests.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": chat_id, "text": message},
+                    timeout=5
+                )
+                print(f"Test Telegram Webhook {chat_id} returned {res.status_code}")
+                return res.status_code
+            except Exception as e:
+                print(f"Test Telegram error: {e}")
+                raise ValueError(f"Telegram API Error: {str(e)}")
         else:
             payload = {
                 "event_id": "test-uuid-123",
@@ -120,8 +124,12 @@ def send_test_webhook(hook_id):
                 "X-Signature": signature
             }
             
-            res = requests.post(hook.url, data=raw_body, headers=headers, timeout=5)
-            print(f"Test Webhook {hook.url} returned {res.status_code}")
-            return res.status_code
+            try:
+                res = requests.post(hook.url, data=raw_body, headers=headers, timeout=5)
+                print(f"Test Webhook {hook.url} returned {res.status_code}")
+                return res.status_code
+            except Exception as e:
+                print(f"Test Webhook error: {e}")
+                raise ValueError(f"Failed to connect to {hook.url}: {str(e)}")
     finally:
         db.close()
