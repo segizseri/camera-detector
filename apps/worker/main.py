@@ -34,6 +34,16 @@ def worker_main():
                 time.sleep(5)
                 continue
             
+            import os
+            import subprocess
+            if os.path.exists("data/.trigger_train_lstm"):
+                print("Found training trigger! Starting scripts/train_lstm.py in background...")
+                try:
+                    os.remove("data/.trigger_train_lstm")
+                    subprocess.Popen(["python", "scripts/train_lstm.py"])
+                except Exception as e:
+                    print(f"Failed to start training: {e}")
+            
             # Start/Stop logic
             current_cam_ids = set()
             for cam in cameras:

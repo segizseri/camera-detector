@@ -58,3 +58,11 @@ class WebhookUpdate(BaseModel):
     url: Optional[str] = None
     secret: Optional[str] = None
     enabled: Optional[bool] = None
+
+class SnapshotRequest(BaseModel):
+    dataset_folder: Optional[str] = None
+    session_id: Optional[str] = None
+
+class SaveSessionRequest(BaseModel):
+    session_id: str
+    dataset_folder: str

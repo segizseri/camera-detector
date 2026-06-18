@@ -96,3 +96,12 @@ async def passenger_report_page(request: Request):
 @app.get("/buses", response_class=HTMLResponse)
 async def buses_page(request: Request):
     return templates.TemplateResponse("buses.html", {"request": request})
+
+@app.get("/finetune", response_class=HTMLResponse)
+async def finetune_page(request: Request):
+    import os
+    dataset_dir = "data/dataset"
+    folders = []
+    if os.path.exists(dataset_dir):
+        folders = [f for f in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, f))]
+    return templates.TemplateResponse("finetune.html", {"request": request, "dataset_folders": folders})

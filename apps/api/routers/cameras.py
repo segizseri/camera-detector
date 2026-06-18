@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from libs.database import get_db
 from libs.models import Camera, Event
-from libs.schemas import CameraUpdate, RTSPTestResult
+from libs.schemas import CameraUpdate, RTSPTestResult, SnapshotRequest, SaveSessionRequest
 import datetime
 import subprocess
 import time
@@ -130,3 +130,68 @@ def delete_camera(camera_id: str, db: Session = Depends(get_db)):
     db.delete(cam)
     db.commit()
     return {"status": "success"}
+
+@router.post("/{camera_id}/snapshot")
+def capture_snapshot(camera_id: str, request: SnapshotRequest, db: Session = Depends(get_db)):
+    cam = db.query(Camera).filter(Camera.id == camera_id).first()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    if request.session_id:
+        dataset_dir = f"data/dataset/.temp_{request.session_id}"
+    elif request.dataset_folder:
+        dataset_dir = f"data/dataset/{request.dataset_folder}"
+    else:
+        raise HTTPException(status_code=400, detail="Must provide session_id or dataset_folder")
+
+    import os
+    os.makedirs(dataset_dir, exist_ok=True)
+    
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    filename = f"{timestamp}.jpg"
+    filepath = os.path.join(dataset_dir, filename)
+    
+    cmd = [
+        "ffmpeg", "-y", "-rtsp_transport", "tcp", "-i", cam.rtsp_url,
+        "-vframes", "1", "-q:v", "2", filepath
+    ]
+    
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if res.returncode == 0 and os.path.exists(filepath):
+            return {"status": "success", "filepath": filepath}
+        else:
+            return {"status": "error", "error": "Failed to capture snapshot", "details": res.stderr}
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "error": "Timeout capturing snapshot"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@router.post("/{camera_id}/save-session")
+def save_session(camera_id: str, request: SaveSessionRequest, db: Session = Depends(get_db)):
+    import os
+    import shutil
+    
+    temp_dir = f"data/dataset/.temp_{request.session_id}"
+    final_dir = f"data/dataset/{request.dataset_folder}"
+    
+    if not os.path.exists(temp_dir):
+        raise HTTPException(status_code=404, detail="Session not found or empty")
+        
+    os.makedirs(final_dir, exist_ok=True)
+    
+    moved_count = 0
+    try:
+        for filename in os.listdir(temp_dir):
+            src = os.path.join(temp_dir, filename)
+            dst = os.path.join(final_dir, filename)
+            if os.path.isfile(src):
+                shutil.move(src, dst)
+                moved_count += 1
+                
+        # Clean up temp dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return {"status": "success", "moved_files": moved_count, "final_folder": request.dataset_folder}
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to save session: {str(e)}"}
+

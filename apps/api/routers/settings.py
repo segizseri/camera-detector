@@ -44,3 +44,15 @@ async def update_settings(update: SettingUpdate, db: Session = Depends(get_db)):
             db.add(s)
     db.commit()
     return {"status": "ok"}
+
+@router.post("/trigger-training")
+async def trigger_training():
+    import os
+    try:
+        # Create a trigger file that the worker container will notice
+        with open("data/.trigger_train_lstm", "w") as f:
+            f.write("trigger")
+        return {"status": "success", "message": "Обучение запущено в фоновом режиме"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
