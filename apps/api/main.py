@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, FileResponse
 from libs.database import engine, Base
 from libs.models import Camera, Event, Webhook
-from apps.api.routers import nvr, cameras, events, webhooks, settings, stats, buses
+from apps.api.routers import nvr, cameras, events, webhooks, settings, stats, buses, visitors
 
 Base.metadata.create_all(bind=engine)
 
@@ -52,6 +52,7 @@ app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
 app.include_router(buses.router, prefix="/api/buses", tags=["Buses"])
+app.include_router(visitors.router, prefix="/api/visitors", tags=["Visitors"])
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
@@ -105,3 +106,7 @@ async def finetune_page(request: Request):
     if os.path.exists(dataset_dir):
         folders = [f for f in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, f))]
     return templates.TemplateResponse("finetune.html", {"request": request, "dataset_folders": folders})
+
+@app.get("/visitors", response_class=HTMLResponse)
+async def visitors_page(request: Request):
+    return templates.TemplateResponse("visitors.html", {"request": request})

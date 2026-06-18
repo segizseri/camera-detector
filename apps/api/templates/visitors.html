@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}База Посетителей{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-3xl font-bold">База Посетителей (Re-ID)</h1>
+    <p class="text-gray-400 text-sm mt-1">Система автоматически распознает лица и ведет историю визитов.</p>
+</div>
+
+<div class="bg-gray-800 rounded-lg p-4 mb-6 shadow-md">
+    <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow" hx-get="/api/visitors/" hx-target="#visitors-grid" hx-trigger="click">
+        <i class="fas fa-sync"></i> Обновить список
+    </button>
+</div>
+
+<div id="visitors-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6" hx-get="/api/visitors/" hx-trigger="load">
+    <div class="col-span-full text-center text-gray-500 py-10">Загрузка данных посетителей...</div>
+</div>
+
+<!-- HTMX Template for rendering visitors -->
+<script>
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+        if (evt.detail.target.id === 'visitors-grid') {
+            try {
+                const data = JSON.parse(evt.detail.xhr.response);
+                renderVisitors(data);
+            } catch (e) {
+                // Not JSON, maybe it's an error page
+            }
+        }
+    });
+
+    function renderVisitors(visitors) {
+        const grid = document.getElementById('visitors-grid');
+        grid.innerHTML = '';
+        
+        if (!visitors || visitors.length === 0) {
+            grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">Посетителей пока нет. Система ожидает появления людей в кадре.</div>';
+            return;
+        }
+
+        visitors.forEach(v => {
+            const card = document.createElement('div');
+            
+            const borderClass = v.is_flagged ? 'border-red-500' : 'border-gray-700';
+            const statusHtml = v.is_flagged 
+                ? '<span class="text-xs bg-red-900 text-red-200 px-2 py-1 rounded-full"><i class="fas fa-exclamation-triangle"></i> Замечен в нарушениях</span>'
+                : '<span class="text-xs bg-green-900 text-green-200 px-2 py-1 rounded-full">Обычный клиент</span>';
+            
+            card.className = `bg-gray-800 rounded-lg border ${borderClass} overflow-hidden shadow-lg relative flex flex-col`;
+            
+            // Format dates
+            const lastSeen = new Date(v.last_seen).toLocaleString('ru-RU');
+            const firstSeen = new Date(v.first_seen).toLocaleDateString('ru-RU');
+            
+            const imgPath = v.face_snapshot ? `/media/snapshots/${v.face_snapshot}` : '/static/favicon.png';
+            
+            card.innerHTML = `
+                <div class="h-48 bg-gray-900 overflow-hidden relative">
+                    <img src="${imgPath}" class="w-full h-full object-cover" alt="Face" onerror="this.src='/static/favicon.png'">
+                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 to-transparent h-16"></div>
+                    <div class="absolute bottom-2 left-2">
+                        ${statusHtml}
+                    </div>
+                </div>
+                <div class="p-4 flex-grow">
+                    <h3 class="font-bold text-lg text-white mb-1">Посетитель #${v.id.substring(0, 6)}</h3>
+                    <div class="text-sm text-gray-400 space-y-1">
+                        <p><i class="fas fa-walking w-4 text-center"></i> Визитов: <span class="text-white font-semibold">${v.visit_count}</span></p>
+                        <p><i class="fas fa-clock w-4 text-center"></i> Был: <span class="text-white">${lastSeen}</span></p>
+                        <p><i class="fas fa-calendar-alt w-4 text-center"></i> Впервые: <span class="text-white">${firstSeen}</span></p>
+                    </div>
+                </div>
+                <div class="p-3 bg-gray-750 border-t border-gray-700 flex justify-end">
+                    <button class="text-xs text-red-400 hover:text-red-300" onclick="deleteVisitor('${v.id}')">
+                        <i class="fas fa-trash"></i> Удалить профиль
+                    </button>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    function deleteVisitor(id) {
+        if(confirm('Вы уверены, что хотите удалить профиль этого посетителя?')) {
+            fetch(`/api/visitors/${id}`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    // Refresh
+                    htmx.ajax('GET', '/api/visitors/', '#visitors-grid');
+                }
+            });
+        }
+    }
+</script>
+{% endblock %}

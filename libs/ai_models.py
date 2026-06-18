@@ -3,7 +3,7 @@ import torch.nn as nn
 import os
 
 class ActionLSTM(nn.Module):
-    def __init__(self, num_keypoints=17, hidden_dim=64, num_layers=2, num_classes=4):
+    def __init__(self, num_keypoints=17, hidden_dim=64, num_layers=2, num_classes=6):
         super(ActionLSTM, self).__init__()
         # Input shape: (batch_size, seq_len, num_keypoints * 2)
         # 17 keypoints each with (x, y) coordinates
@@ -32,7 +32,7 @@ class ActionLSTM(nn.Module):
         return logits
 
 def create_or_load_model(weights_path="action_lstm.pt"):
-    model = ActionLSTM(num_keypoints=17, hidden_dim=64, num_layers=2, num_classes=5)
+    model = ActionLSTM(num_keypoints=17, hidden_dim=64, num_layers=2, num_classes=6)
     if os.path.exists(weights_path):
         model.load_state_dict(torch.load(weights_path, map_location="cpu"))
         print(f"Loaded AI Action Detector weights from {weights_path}")

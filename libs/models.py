@@ -38,12 +38,27 @@ class Camera(Base):
     detect_theft = Column(Boolean, default=True)
     detect_passengers = Column(Boolean, default=True)
     detect_shoplifting = Column(Boolean, default=True)
+    detect_eating = Column(Boolean, default=True)
     display_zone = Column(Text, nullable=True)  # JSON polygon for display case ROI
     
     status = Column(String, default="offline") # offline, online, error
     last_seen = Column(DateTime, nullable=True)
     
     events = relationship("Event", back_populates="camera", cascade="all, delete-orphan")
+
+class Visitor(Base):
+    __tablename__ = "visitors"
+
+    id = Column(String, primary_key=True, index=True)
+    first_seen = Column(DateTime, default=datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.utcnow)
+    visit_count = Column(Integer, default=1)
+    
+    face_embedding = Column(Text, nullable=True) # Store as JSON array of floats for sqlite simplicity or BLOB
+    face_snapshot = Column(String, nullable=True)
+    is_flagged = Column(Boolean, default=False)
+    
+    events = relationship("Event", back_populates="visitor")
 
 class PassengerCount(Base):
     __tablename__ = "passenger_counts"
@@ -60,6 +75,7 @@ class Event(Base):
 
     id = Column(String, primary_key=True, index=True)
     camera_id = Column(String, ForeignKey("cameras.id"))
+    visitor_id = Column(String, ForeignKey("visitors.id"), nullable=True)
     event_type = Column(String) # person_detected, fight_suspected, camera_offline
     confidence = Column(Float, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
@@ -69,6 +85,7 @@ class Event(Base):
     
     meta_json = Column(Text, nullable=True)
     camera = relationship("Camera", back_populates="events")
+    visitor = relationship("Visitor", back_populates="events")
     deliveries = relationship("WebhookDelivery", cascade="all, delete-orphan", backref="event")
 
 class Webhook(Base):

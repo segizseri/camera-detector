@@ -35,6 +35,7 @@ class CameraPipeline:
         self.detect_theft = True
         self.detect_passengers = True
         self.detect_shoplifting = True
+        self.detect_eating = True
         self.display_zone = None
         
         self.ingest_thread = threading.Thread(target=self._ingest_loop, daemon=True)
@@ -103,15 +104,16 @@ class CameraPipeline:
             queue_webhook(evt)
         db.close()
 
-    def handle_ai_results(self, bboxes, keypoints, res, frame, timestamp):
+    def handle_ai_results(self, bboxes, keypoints, res, frame, timestamp, track_to_visitor=None):
+        if track_to_visitor is None: track_to_visitor = {}
         # bboxes: list of predictions from YOLO [x1, y1, x2, y2, conf, cls]
         # keypoints: numpy array [N, 17, 3]
         has_person, n_people = self.person_det.check_alert(bboxes)
-        action_class, action_prob = self.action_det.add_frame(bboxes, keypoints, timestamp)
+        ids = res.boxes.id.cpu().numpy().tolist() if res.boxes.id is not None else []
+        action_class, action_prob, track_id_of_action = self.action_det.add_frame(bboxes, keypoints, ids, timestamp)
         
         # Passenger Counting
         if self.detect_passengers:
-            ids = res.boxes.id.cpu().numpy().tolist() if res.boxes.id is not None else None
             if ids:
                 h, w = frame.shape[:2]
                 # Normalize boxes for the counter
@@ -132,6 +134,7 @@ class CameraPipeline:
             if action_class == 2 and not self.detect_bullying: action_class = 0
             if action_class == 3 and not self.detect_theft: action_class = 0
             if action_class == 4 and not self.detect_shoplifting: action_class = 0
+            if action_class == 5 and not self.detect_eating: action_class = 0
             
             if action_class > 0 and action_prob > self.action_det.thresholds.get(action_class, 0.6):
                 
@@ -158,8 +161,8 @@ class CameraPipeline:
                     except Exception as e:
                         print(f"Error evaluating theft zone ROI: {e}")
 
-                # ROI check for display case shoplifting (class 4)
-                if action_class == 4 and hasattr(self, 'display_zone') and self.display_zone:
+                # ROI check for display case shoplifting (class 4) and eating (class 5)
+                if action_class in (4, 5) and hasattr(self, 'display_zone') and self.display_zone:
                     try:
                         import json, numpy as np, cv2
                         zone_pts = json.loads(self.display_zone)
@@ -183,9 +186,10 @@ class CameraPipeline:
                 if now - self.action_det.last_alerts.get(action_class, 0) > self.action_det.cooldowns.get(action_class, 30):
                     self.action_det.last_alerts[action_class] = now
                     
-                    event_types = {1: "fight_suspected", 2: "bullying_suspected", 3: "theft_suspected", 4: "shoplifting_suspected"}
+                    event_types = {1: "fight_suspected", 2: "bullying_suspected", 3: "theft_suspected", 4: "shoplifting_suspected", 5: "eating_suspected"}
                     event_type = event_types[action_class]
-                    self._trigger_event(event_type, float(action_prob), res, frame)
+                    visitor_id = track_to_visitor.get(track_id_of_action)
+                    self._trigger_event(event_type, float(action_prob), res, frame, visitor_id)
             
         # Update camera status periodically
         if now - self.last_sync_time > 10:
@@ -249,6 +253,7 @@ class CameraPipeline:
                 self.detect_theft = cam.detect_theft
                 self.detect_passengers = cam.detect_passengers
                 self.detect_shoplifting = cam.detect_shoplifting
+                self.detect_eating = cam.detect_eating
             
             # Settings sync
             settings = {s.key: s.value for s in db.query(GlobalSetting).all()}
@@ -263,7 +268,7 @@ class CameraPipeline:
         finally:
             db.close()
 
-    def _trigger_event(self, event_type, conf, res, frame):
+    def _trigger_event(self, event_type, conf, res, frame, visitor_id=None):
         import cv2
         import os
         event_id = str(uuid.uuid4())
@@ -292,7 +297,8 @@ class CameraPipeline:
                 'fight_suspected': 'ПОДОЗРЕНИЕ НА ДРАКУ',
                 'bullying_suspected': 'ПОДОЗРЕНИЕ НА БУЛЛИНГ',
                 'theft_suspected': 'ПОДОЗРЕНИЕ НА КРАЖУ',
-                'shoplifting_suspected': 'ПОДОЗРЕНИЕ НА КРАЖУ ИЗ ВИТРИНЫ'
+                'shoplifting_suspected': 'ПОДОЗРЕНИЕ НА КРАЖУ ИЗ ВИТРИНЫ',
+                'eating_suspected': 'ПОДОЗРЕНИЕ НА ПОЕДАНИЕ/РАСПИТИЕ НА ВИТРИНЕ'
             }
             label = label_map.get(event_type, event_type).upper()
             
@@ -310,11 +316,19 @@ class CameraPipeline:
         evt = Event(
             id=event_id,
             camera_id=self.camera_id,
+            visitor_id=visitor_id,
             event_type=event_type,
             confidence=conf,
             snapshot_path=snap_name
         )
         db.add(evt)
+        
+        if visitor_id and event_type in ["fight_suspected", "theft_suspected", "shoplifting_suspected", "eating_suspected", "bullying_suspected"]:
+            from libs.models import Visitor
+            v = db.query(Visitor).filter(Visitor.id == visitor_id).first()
+            if v:
+                v.is_flagged = True
+                
         db.commit()
         
         # Webhook

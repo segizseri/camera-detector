@@ -98,6 +98,11 @@
                     <label class="text-xs text-gray-300">Детекция Кражи из витрины</label>
                     <input type="checkbox" id="check-shoplifting" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-cyan-600">
                 </div>
+                
+                <div class="flex items-center justify-between">
+                    <label class="text-xs text-gray-300">Детекция Поедания на витрине</label>
+                    <input type="checkbox" id="check-eating" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-pink-600">
+                </div>
             </div>
 
             <button type="submit"
@@ -152,6 +157,7 @@
         document.getElementById('check-theft').checked = cam.detect_theft;
         document.getElementById('check-passengers').checked = cam.detect_passengers;
         document.getElementById('check-shoplifting').checked = cam.detect_shoplifting;
+        document.getElementById('check-eating').checked = cam.detect_eating;
         
         // Hide/show drawing buttons based on features
         updateDrawingButtons();
@@ -260,7 +266,8 @@
             detect_bullying: document.getElementById('check-bullying').checked,
             detect_theft: document.getElementById('check-theft').checked,
             detect_passengers: document.getElementById('check-passengers').checked,
-            detect_shoplifting: document.getElementById('check-shoplifting').checked
+            detect_shoplifting: document.getElementById('check-shoplifting').checked,
+            detect_eating: document.getElementById('check-eating').checked
         };
 
         const btn = e.target.querySelector('button');
@@ -533,15 +540,16 @@
         const isTheft = document.getElementById('check-theft').checked;
         const isPass = document.getElementById('check-passengers').checked;
         const isShoplift = document.getElementById('check-shoplifting').checked;
+        const isEating = document.getElementById('check-eating').checked;
         
         document.getElementById('btn-draw-roi').style.display = isTheft ? 'inline-block' : 'none';
-        document.getElementById('btn-draw-display').style.display = isShoplift ? 'inline-block' : 'none';
+        document.getElementById('btn-draw-display').style.display = (isShoplift || isEating) ? 'inline-block' : 'none';
         document.getElementById('btn-draw-front').style.display = isPass ? 'inline-block' : 'none';
         document.getElementById('btn-draw-rear').style.display = isPass ? 'inline-block' : 'none';
     }
 
     // Add listeners to toggles to update UI immediately
-    ['check-theft', 'check-passengers', 'check-shoplifting'].forEach(id => {
+    ['check-theft', 'check-passengers', 'check-shoplifting', 'check-eating'].forEach(id => {
         document.getElementById(id).addEventListener('change', updateDrawingButtons);
     });
 

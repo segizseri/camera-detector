@@ -5,32 +5,38 @@ import numpy as np
 class AIActionDetector:
     def __init__(self, camera_id):
         self.camera_id = camera_id
-        # Classes: 0 (Normal), 1 (Fight), 2 (Bullying), 3 (Theft), 4 (Shoplifting)
-        self.cooldowns = {1: 20, 2: 30, 3: 40, 4: 30}
-        self.last_alerts = {1: 0, 2: 0, 3: 0, 4: 0}
-        self.thresholds = {1: 0.6, 2: 0.6, 3: 0.5, 4: 0.55}
+        # Classes: 0 (Normal), 1 (Fight), 2 (Bullying), 3 (Theft), 4 (Shoplifting), 5 (Eating)
+        self.cooldowns = {1: 20, 2: 30, 3: 40, 4: 30, 5: 30}
+        self.last_alerts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+        self.thresholds = {1: 0.6, 2: 0.6, 3: 0.5, 4: 0.55, 5: 0.55}
         
         self.seq_len = 30
         self.history = deque(maxlen=15)
-        # Track up to 4 people independently
-        self.keypoint_buffers = [deque(maxlen=self.seq_len) for _ in range(4)] 
+        # Track buffers: track_id -> deque of keypoints
+        self.track_buffers = {} 
         
         from libs.ai_models import create_or_load_model
         import torch
         self.model = create_or_load_model()
         self.torch = torch
         
-    def add_frame(self, bboxes, keypoints, timestamp):
-        if keypoints is None or len(keypoints) == 0 or keypoints.shape[1] < 17:
-            self.history.append((0, 1.0))
+    def add_frame(self, bboxes, keypoints, track_ids, timestamp):
+        if keypoints is None or len(keypoints) == 0 or keypoints.shape[1] < 17 or not track_ids:
+            self.history.append((0, 1.0, None))
             return self._get_smoothed_prediction()
             
         best_class = 0
         max_prob = 0.0
-        n = min(len(bboxes), 4) # process max 4 people
+        best_track_id = None
         
+        if len(self.track_buffers) > 50:
+            self.track_buffers.clear()
+            
         with self.torch.no_grad():
-            for i in range(n):
+            for i, track_id in enumerate(track_ids):
+                if i >= len(bboxes) or i >= len(keypoints):
+                    continue
+                track_id = int(track_id)
                 box = bboxes[i]
                 kp = keypoints[i]
                 
@@ -45,10 +51,12 @@ class AIActionDetector:
                 processed[:, 0] = (kp[:, 0] - cx) / scale
                 processed[:, 1] = (kp[:, 1] - cy) / scale
                 
-                self.keypoint_buffers[i].append(processed)
+                if track_id not in self.track_buffers:
+                    self.track_buffers[track_id] = deque(maxlen=self.seq_len)
+                self.track_buffers[track_id].append(processed)
                 
-                if len(self.keypoint_buffers[i]) == self.seq_len:
-                    seq_array = np.array(self.keypoint_buffers[i]).reshape(1, self.seq_len, 34)
+                if len(self.track_buffers[track_id]) == self.seq_len:
+                    seq_array = np.array(self.track_buffers[track_id]).reshape(1, self.seq_len, 34)
                     input_tensor = self.torch.tensor(seq_array, dtype=self.torch.float32)
                     logits = self.model(input_tensor)
                     probs = self.torch.softmax(logits, dim=1).squeeze(0)
@@ -58,20 +66,26 @@ class AIActionDetector:
                     if predicted_class > 0 and prob_val > max_prob:
                         best_class = predicted_class
                         max_prob = prob_val
+                        best_track_id = track_id
                     elif best_class == 0 and prob_val > max_prob:
                         max_prob = prob_val
+                        best_track_id = track_id
                         
-        self.history.append((best_class, max_prob))
+        self.history.append((best_class, max_prob, best_track_id))
         return self._get_smoothed_prediction()
 
     def _get_smoothed_prediction(self):
         if not self.history:
-            return 0, 0.0
+            return 0, 0.0, None
         from collections import Counter
         classes = [h[0] for h in self.history]
         most_common_class, count = Counter(classes).most_common(1)[0]
+        
+        track_ids = [h[2] for h in self.history if h[0] == most_common_class and h[2] is not None]
+        best_track = Counter(track_ids).most_common(1)[0][0] if track_ids else None
+        
         avg_prob = sum(h[1] for h in self.history if h[0] == most_common_class) / count
-        return most_common_class, avg_prob
+        return most_common_class, avg_prob, best_track
 
 class PersonDetector:
     def __init__(self, camera_id):

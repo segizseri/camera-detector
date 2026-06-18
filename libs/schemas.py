@@ -38,6 +38,7 @@ class CameraUpdate(BaseModel):
     detect_theft: Optional[bool] = None
     detect_passengers: Optional[bool] = None
     detect_shoplifting: Optional[bool] = None
+    detect_eating: Optional[bool] = None
     display_zone: Optional[str] = None
 
 class RTSPTestResult(BaseModel):
