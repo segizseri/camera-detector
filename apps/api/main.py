@@ -9,6 +9,41 @@ from apps.api.routers import nvr, cameras, events, webhooks, settings, stats, bu
 
 Base.metadata.create_all(bind=engine)
 
+# Auto-migration: Add missing columns to existing tables
+def auto_migrate():
+    """Inspect all model tables and ALTER TABLE to add any missing columns."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    for table_name, table in Base.metadata.tables.items():
+        if not inspector.has_table(table_name):
+            continue
+        existing_cols = {col["name"] for col in inspector.get_columns(table_name)}
+        for col in table.columns:
+            if col.name not in existing_cols:
+                col_type = col.type.compile(engine.dialect)
+                default_clause = ""
+                if col.default is not None:
+                    default_val = col.default.arg
+                    if isinstance(default_val, bool):
+                        default_clause = f" DEFAULT {1 if default_val else 0}"
+                    elif isinstance(default_val, (int, float)):
+                        default_clause = f" DEFAULT {default_val}"
+                    elif isinstance(default_val, str):
+                        default_clause = f" DEFAULT '{default_val}'"
+                nullable = "" if col.nullable else " NOT NULL"
+                # SQLite doesn't support NOT NULL without default on ALTER
+                if not col.nullable and not default_clause:
+                    nullable = ""
+                stmt = f'ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}{default_clause}{nullable}'
+                with engine.begin() as conn:
+                    conn.execute(text(stmt))
+                print(f"[migrate] Added column {table_name}.{col.name} ({col_type}{default_clause})")
+
+try:
+    auto_migrate()
+except Exception as e:
+    print(f"[migrate] Warning: {e}")
+
 # Auto-migration: Create default bus for cameras without one
 def migrate_buses():
     from libs.database import SessionLocal
