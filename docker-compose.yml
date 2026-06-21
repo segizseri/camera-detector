@@ -8,6 +8,7 @@ services:
     ports:
       - "4000:8000"
     environment:
+      - PYTHONUNBUFFERED=1
       - DATABASE_URL=sqlite:///data/sqlite/laptop_ai_box.db
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-mzxG9QZ0N9E5_n-I54aWXZ5G8X-G9oN-w-X_gZJpL14=}
       - ADMIN_USER=${ADMIN_USER:-admin}
@@ -27,6 +28,7 @@ services:
     container_name: laptop_ai_box_worker
     restart: unless-stopped
     environment:
+      - PYTHONUNBUFFERED=1
       - DATABASE_URL=sqlite:///data/sqlite/laptop_ai_box.db
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-mzxG9QZ0N9E5_n-I54aWXZ5G8X-G9oN-w-X_gZJpL14=}
     volumes:
