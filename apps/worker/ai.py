@@ -130,6 +130,9 @@ class AIWorker:
             try:
                 setting = db_check.query(GlobalSetting).filter_by(key="visitor_scanning_enabled").first()
                 self._visitor_scanning_enabled = (setting.value.lower() == 'true') if setting else True
+            except Exception as e:
+                print(f"[Re-ID] Warning: Could not read scanning setting from DB: {e}")
+                self._visitor_scanning_enabled = True # Fail-safe default
             finally:
                 db_check.close()
             self._last_scanning_enabled_check = now
