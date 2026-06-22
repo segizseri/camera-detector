@@ -8,10 +8,18 @@
     <p class="text-gray-400 text-sm mt-1">Система автоматически распознает лица и ведет историю визитов.</p>
 </div>
 
-<div class="bg-gray-800 rounded-lg p-4 mb-6 shadow-md flex items-center gap-4">
-    <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow" onclick="loadVisitors()">
-        <i class="fas fa-sync"></i> Обновить список
-    </button>
+<div class="bg-gray-800 rounded-lg p-4 mb-6 shadow-md flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-4">
+        <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow" onclick="loadVisitors()">
+            <i class="fas fa-sync"></i> Обновить список
+        </button>
+        
+        <div class="flex bg-gray-900 rounded shadow-inner p-1">
+            <button onclick="setFilter('all')" id="filter-btn-all" class="px-3 py-1 text-sm rounded bg-gray-700 text-white transition-colors">Все</button>
+            <button onclick="setFilter('normal')" id="filter-btn-normal" class="px-3 py-1 text-sm rounded text-gray-400 hover:text-white transition-colors">Обычные</button>
+            <button onclick="setFilter('flagged')" id="filter-btn-flagged" class="px-3 py-1 text-sm rounded text-gray-400 hover:text-white transition-colors">Нарушители</button>
+        </div>
+    </div>
     <span id="visitors-count" class="text-gray-400 text-sm"></span>
 </div>
 
@@ -19,38 +27,100 @@
     <div class="col-span-full text-center text-gray-500 py-10">Загрузка данных посетителей...</div>
 </div>
 
+<!-- Edit Visitor Modal -->
+<div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center z-50">
+    <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-md overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
+            <h2 class="text-xl font-bold text-white">Редактировать профиль</h2>
+            <button onclick="closeEditModal()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="p-6">
+            <input type="hidden" id="edit-id">
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-300 mb-1">Имя (Опционально)</label>
+                <input type="text" id="edit-name" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500" placeholder="Например: Иван Иванов">
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-300 mb-1">Заметки</label>
+                <textarea id="edit-notes" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white h-24 focus:outline-none focus:border-blue-500" placeholder="Приметы, особенности..."></textarea>
+            </div>
+            
+            <div class="mb-6 flex items-center">
+                <input type="checkbox" id="edit-flagged" class="w-5 h-5 text-red-600 bg-gray-900 border-gray-700 rounded focus:ring-red-500 focus:ring-2">
+                <label for="edit-flagged" class="ml-2 text-sm font-medium text-red-400">Отметить как нарушителя (Flagged)</label>
+            </div>
+            
+            <div class="flex justify-end gap-3">
+                <button onclick="closeEditModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded">Отмена</button>
+                <button onclick="saveVisitor()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded shadow">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
+    let currentFilter = 'all';
+    
+    function setFilter(filter) {
+        currentFilter = filter;
+        
+        // Update button styles
+        ['all', 'normal', 'flagged'].forEach(f => {
+            const btn = document.getElementById(`filter-btn-${f}`);
+            if(f === filter) {
+                btn.classList.add('bg-gray-700', 'text-white');
+                btn.classList.remove('text-gray-400');
+            } else {
+                btn.classList.remove('bg-gray-700', 'text-white');
+                btn.classList.add('text-gray-400');
+            }
+        });
+        
+        loadVisitors();
+    }
+
     function loadVisitors() {
-        fetch('/api/visitors/')
+        const grid = document.getElementById('visitors-grid');
+        grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10"><i class="fas fa-spinner fa-spin mr-2"></i> Загрузка...</div>';
+        
+        fetch(`/api/visitors/?status_filter=${currentFilter}`)
             .then(res => res.json())
             .then(data => renderVisitors(data))
             .catch(err => {
-                document.getElementById('visitors-grid').innerHTML = 
-                    '<div class="col-span-full text-center text-red-400 py-10">Ошибка загрузки: ' + err.message + '</div>';
+                grid.innerHTML = '<div class="col-span-full text-center text-red-400 py-10">Ошибка загрузки: ' + err.message + '</div>';
             });
     }
+
+    // Store visitors globally to populate the edit modal easily
+    let loadedVisitors = {};
 
     function renderVisitors(visitors) {
         const grid = document.getElementById('visitors-grid');
         const countEl = document.getElementById('visitors-count');
         grid.innerHTML = '';
+        loadedVisitors = {};
         
         if (!visitors || visitors.length === 0) {
-            grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">Посетителей пока нет. Система ожидает появления людей в кадре.</div>';
+            grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">Посетителей не найдено.</div>';
             countEl.textContent = '';
             return;
         }
 
         const flagged = visitors.filter(v => v.is_flagged).length;
-        countEl.textContent = `Всего: ${visitors.length} | Замечены в нарушениях: ${flagged}`;
+        countEl.textContent = `Отображено: ${visitors.length} (Нарушителей: ${flagged})`;
 
         visitors.forEach(v => {
+            loadedVisitors[v.id] = v;
             const card = document.createElement('div');
             
             const borderClass = v.is_flagged ? 'border-red-500 border-2' : 'border-gray-700';
             const statusHtml = v.is_flagged 
-                ? '<span class="text-xs bg-red-900 text-red-200 px-2 py-1 rounded-full"><i class="fas fa-exclamation-triangle"></i> Замечен в нарушениях</span>'
-                : '<span class="text-xs bg-green-900 text-green-200 px-2 py-1 rounded-full">Обычный клиент</span>';
+                ? '<span class="text-xs bg-red-900 text-red-200 px-2 py-1 rounded-full shadow"><i class="fas fa-exclamation-triangle"></i> Нарушитель</span>'
+                : '<span class="text-xs bg-green-900 text-green-200 px-2 py-1 rounded-full shadow">Обычный</span>';
             
             card.className = `bg-gray-800 rounded-lg border ${borderClass} overflow-hidden shadow-lg flex flex-col`;
             
@@ -60,25 +130,32 @@
             
             const imgPath = v.face_snapshot ? `/media/snapshots/${v.face_snapshot}` : '/static/favicon.png';
             
+            // Use provided name or default ID string
+            const displayName = v.name ? v.name : `Посетитель #${v.id.substring(0, 6)}`;
+            
             card.innerHTML = `
-                <div class="h-48 bg-gray-900 overflow-hidden relative">
+                <div class="h-48 bg-gray-900 overflow-hidden relative group">
                     <img src="${imgPath}" class="w-full h-full object-cover" alt="Face" onerror="this.src='/static/favicon.png'">
-                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 to-transparent h-16"></div>
+                    <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-90"></div>
                     <div class="absolute bottom-2 left-2">
                         ${statusHtml}
                     </div>
                 </div>
-                <div class="p-4 flex-grow">
-                    <h3 class="font-bold text-lg text-white mb-1">Посетитель #${v.id.substring(0, 6)}</h3>
+                <div class="p-4 flex-grow relative">
+                    <h3 class="font-bold text-lg text-white mb-2 truncate" title="${displayName}">${displayName}</h3>
                     <div class="text-sm text-gray-400 space-y-1">
                         <p><i class="fas fa-walking w-4 text-center"></i> Визитов: <span class="text-white font-semibold">${v.visit_count}</span></p>
                         <p><i class="fas fa-clock w-4 text-center"></i> Был: <span class="text-white">${lastSeen}</span></p>
                         <p><i class="fas fa-calendar-alt w-4 text-center"></i> Впервые: <span class="text-white">${firstSeen}</span></p>
                     </div>
+                    ${v.notes ? `<div class="mt-3 p-2 bg-gray-700 rounded text-xs text-gray-300 italic line-clamp-2" title="${v.notes}">${v.notes}</div>` : ''}
                 </div>
-                <div class="p-3 border-t border-gray-700 flex justify-end">
-                    <button class="text-xs text-red-400 hover:text-red-300" onclick="deleteVisitor('${v.id}')">
-                        <i class="fas fa-trash"></i> Удалить профиль
+                <div class="p-3 bg-gray-850 border-t border-gray-700 flex justify-between items-center">
+                    <button class="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1" onclick="openEditModal('${v.id}')">
+                        <i class="fas fa-edit"></i> Редактировать
+                    </button>
+                    <button class="text-sm text-red-400 hover:text-red-300 flex items-center gap-1" onclick="deleteVisitor('${v.id}')">
+                        <i class="fas fa-trash"></i> Удалить
                     </button>
                 </div>
             `;
@@ -96,6 +173,50 @@
                 }
             });
         }
+    }
+    
+    function openEditModal(id) {
+        const v = loadedVisitors[id];
+        if(!v) return;
+        
+        document.getElementById('edit-id').value = v.id;
+        document.getElementById('edit-name').value = v.name || '';
+        document.getElementById('edit-notes').value = v.notes || '';
+        document.getElementById('edit-flagged').checked = v.is_flagged;
+        
+        document.getElementById('edit-modal').classList.remove('hidden');
+    }
+    
+    function closeEditModal() {
+        document.getElementById('edit-modal').classList.add('hidden');
+    }
+    
+    function saveVisitor() {
+        const id = document.getElementById('edit-id').value;
+        const name = document.getElementById('edit-name').value.trim();
+        const notes = document.getElementById('edit-notes').value.trim();
+        const is_flagged = document.getElementById('edit-flagged').checked;
+        
+        fetch(`/api/visitors/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: name === "" ? null : name,
+                notes: notes === "" ? null : notes,
+                is_flagged: is_flagged
+            })
+        })
+        .then(res => {
+            if(!res.ok) throw new Error('Ошибка сохранения');
+            return res.json();
+        })
+        .then(data => {
+            closeEditModal();
+            loadVisitors(); // refresh grid
+        })
+        .catch(err => alert(err.message));
     }
 
     // Auto-load on page open

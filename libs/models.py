@@ -50,6 +50,8 @@ class Visitor(Base):
     __tablename__ = "visitors"
 
     id = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
     first_seen = Column(DateTime, default=datetime.utcnow)
     last_seen = Column(DateTime, default=datetime.utcnow)
     visit_count = Column(Integer, default=1)
