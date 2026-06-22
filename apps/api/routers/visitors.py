@@ -115,6 +115,15 @@ def update_visitor(visitor_id: str, payload: VisitorUpdate, db: Session = Depend
     db.commit()
     return {"status": "ok"}
 
+@router.post("/clear")
+def clear_visitors(db: Session = Depends(get_db)):
+    non_employee_ids = [v.id for v in db.query(Visitor).filter(Visitor.is_employee == False).all()]
+    if non_employee_ids:
+        db.query(Event).filter(Event.visitor_id.in_(non_employee_ids)).update({Event.visitor_id: None}, synchronize_session=False)
+        db.query(Visitor).filter(Visitor.is_employee == False).delete(synchronize_session=False)
+        db.commit()
+    return {"status": "ok"}
+
 @router.delete("/{visitor_id}")
 def delete_visitor(visitor_id: str, db: Session = Depends(get_db)):
     visitor = db.query(Visitor).filter(Visitor.id == visitor_id).first()
