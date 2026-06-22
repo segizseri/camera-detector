@@ -205,7 +205,7 @@ class AIWorker:
                         except Exception:
                             continue
                 
-                if best_match and best_score > 0.70:
+                if best_match and best_score > 0.60:
                     # Match found
                     self.track_to_visitor[tid] = best_match.id
                     # Remove from retry tracking
