@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}Детали Посетителя{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/visitors" class="text-blue-500 hover:text-blue-400 flex items-center gap-2 mb-4 transition font-medium">
+        <i class="fas fa-arrow-left"></i> Вернуться к списку
+    </a>
+    <h1 class="text-3xl font-bold" id="title-name">Детали Посетителя</h1>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <!-- Left Column: Details & Editing -->
+    <div class="lg:col-span-1 bg-gray-800 rounded-xl border border-gray-700 p-6 shadow-lg h-fit">
+        <div class="w-full h-64 bg-gray-900 rounded-lg overflow-hidden relative mb-6 border border-gray-700 shadow-inner">
+            <img id="detail-snapshot" src="/static/favicon.png" class="w-full h-full object-cover" alt="Face Snapshot">
+            <div id="badge-container" class="absolute bottom-3 left-3">
+                <!-- Status badge injected here -->
+            </div>
+        </div>
+        
+        <form id="edit-form" onsubmit="saveVisitorDetails(event)" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Имя / Псевдоним</label>
+                <input type="text" id="visitor-name" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Например: Иван Иванов">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Заметки / Описание</label>
+                <textarea id="visitor-notes" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white h-28 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Особые приметы, частота визитов, предпочтения..."></textarea>
+            </div>
+            
+            <!-- Switches -->
+            <div class="space-y-3 pt-2">
+                <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded-lg border border-gray-750">
+                    <div class="flex items-center gap-2 text-red-400">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span class="text-sm font-semibold">Отметить как нарушителя</span>
+                    </div>
+                    <button type="button" id="toggle-flagged" onclick="toggleFlaggedStatus()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-gray-600">
+                        <span id="dot-flagged" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+                    </button>
+                </div>
+                
+                <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded-lg border border-gray-750">
+                    <div class="flex items-center gap-2 text-blue-400">
+                        <i class="fas fa-user-tie"></i>
+                        <span class="text-sm font-semibold">Это сотрудник магазина</span>
+                    </div>
+                    <button type="button" id="toggle-employee" onclick="toggleEmployeeStatus()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-gray-600">
+                        <span id="dot-employee" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="text-xs text-gray-500 space-y-1 pt-2 border-t border-gray-700">
+                <p>ID: <span class="font-mono text-gray-400" id="info-id"></span></p>
+                <p>Всего визитов: <span class="text-gray-400 font-semibold" id="info-visits"></span></p>
+                <p>Первый визит: <span class="text-gray-400" id="info-first"></span></p>
+                <p>Последний визит: <span class="text-gray-400" id="info-last"></span></p>
+            </div>
+            
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-lg shadow transition flex items-center justify-center gap-2 mt-4">
+                <i class="fas fa-save"></i> Сохранить настройки
+            </button>
+        </form>
+    </div>
+    
+    <!-- Right Column: Visit History -->
+    <div class="lg:col-span-2 bg-gray-800 rounded-xl border border-gray-700 p-6 shadow-lg flex flex-col">
+        <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <i class="fas fa-history text-blue-500"></i> История фиксаций (последние 100)
+        </h2>
+        
+        <div class="flex-grow overflow-y-auto max-h-[600px] pr-2 space-y-4" id="history-timeline">
+            <div class="text-center text-gray-500 py-10">Загрузка истории...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const visitorId = "{{ visitor_id }}";
+    let isFlagged = false;
+    let isEmployee = false;
+
+    function fetchVisitorData() {
+        fetch(`/api/visitors/${visitorId}`)
+            .then(res => {
+                if(!res.ok) throw new Error('Посетитель не найден');
+                return res.json();
+            })
+            .then(v => {
+                isFlagged = v.is_flagged;
+                isEmployee = v.is_employee;
+                
+                document.getElementById('title-name').textContent = v.name ? v.name : `Посетитель #${v.id.substring(0, 6)}`;
+                document.getElementById('visitor-name').value = v.name || '';
+                document.getElementById('visitor-notes').value = v.notes || '';
+                document.getElementById('info-id').textContent = v.id;
+                document.getElementById('info-visits').textContent = v.visit_count;
+                document.getElementById('info-first').textContent = new Date(v.first_seen).toLocaleString('ru-RU');
+                document.getElementById('info-last').textContent = new Date(v.last_seen).toLocaleString('ru-RU');
+                
+                const img = document.getElementById('detail-snapshot');
+                img.src = v.face_snapshot ? `/media/snapshots/${v.face_snapshot}` : '/static/favicon.png';
+                
+                updateBadgesAndToggles();
+            })
+            .catch(err => {
+                alert(err.message);
+                window.location.href = '/visitors';
+            });
+    }
+
+    function updateBadgesAndToggles() {
+        const badgeBox = document.getElementById('badge-container');
+        if (isEmployee) {
+            badgeBox.innerHTML = '<span class="text-xs bg-blue-900 text-blue-200 px-3 py-1 rounded-full shadow border border-blue-500"><i class="fas fa-user-tie"></i> Сотрудник</span>';
+        } else if (isFlagged) {
+            badgeBox.innerHTML = '<span class="text-xs bg-red-900 text-red-200 px-3 py-1 rounded-full shadow border border-red-500"><i class="fas fa-exclamation-triangle"></i> Нарушитель</span>';
+        } else {
+            badgeBox.innerHTML = '<span class="text-xs bg-green-900 text-green-200 px-3 py-1 rounded-full shadow border border-green-500">Обычный клиент</span>';
+        }
+
+        // Toggle Flagged Switch
+        const btnFlagged = document.getElementById('toggle-flagged');
+        const dotFlagged = document.getElementById('dot-flagged');
+        if (isFlagged) {
+            btnFlagged.classList.remove('bg-gray-600');
+            btnFlagged.classList.add('bg-red-600');
+            dotFlagged.classList.remove('translate-x-0');
+            dotFlagged.classList.add('translate-x-5');
+        } else {
+            btnFlagged.classList.remove('bg-red-600');
+            btnFlagged.classList.add('bg-gray-600');
+            dotFlagged.classList.remove('translate-x-5');
+            dotFlagged.classList.add('translate-x-0');
+        }
+
+        // Toggle Employee Switch
+        const btnEmployee = document.getElementById('toggle-employee');
+        const dotEmployee = document.getElementById('dot-employee');
+        if (isEmployee) {
+            btnEmployee.classList.remove('bg-gray-600');
+            btnEmployee.classList.add('bg-blue-600');
+            dotEmployee.classList.remove('translate-x-0');
+            dotEmployee.classList.add('translate-x-5');
+        } else {
+            btnEmployee.classList.remove('bg-blue-600');
+            btnEmployee.classList.add('bg-gray-600');
+            dotEmployee.classList.remove('translate-x-5');
+            dotEmployee.classList.add('translate-x-0');
+        }
+    }
+
+    function toggleFlaggedStatus() {
+        if(isEmployee && !isFlagged) {
+            isEmployee = false; // Cannot be employee and flagged simultaneously
+        }
+        isFlagged = !isFlagged;
+        updateBadgesAndToggles();
+    }
+
+    function toggleEmployeeStatus() {
+        if(isFlagged && !isEmployee) {
+            isFlagged = false; // Cannot be employee and flagged simultaneously
+        }
+        isEmployee = !isEmployee;
+        updateBadgesAndToggles();
+    }
+
+    function fetchVisitorHistory() {
+        const timeline = document.getElementById('history-timeline');
+        fetch(`/api/visitors/${visitorId}/events`)
+            .then(res => res.json())
+            .then(events => {
+                if (events.length === 0) {
+                    timeline.innerHTML = '<div class="text-center text-gray-500 py-10">Событий посещения не зафиксировано.</div>';
+                    return;
+                }
+                
+                let html = '';
+                events.forEach(e => {
+                    const timeStr = new Date(e.timestamp).toLocaleString('ru-RU');
+                    const imgHtml = e.snapshot_path ? `<img src="/media/snapshots/${e.snapshot_path.split('/').pop()}" class="w-16 h-16 rounded object-cover shadow border border-gray-700" onerror="this.style.display='none'">` : '';
+                    
+                    html += `
+                        <div class="flex items-start gap-4 p-3 bg-gray-900/40 border border-gray-750 rounded-lg hover:border-gray-600 transition">
+                            <div class="flex-shrink-0 mt-1.5">
+                                <span class="flex h-3 w-3 relative">
+                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                  <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                                </span>
+                            </div>
+                            <div class="flex-grow">
+                                <p class="text-sm font-semibold text-white">${e.camera_name}</p>
+                                <p class="text-xs text-gray-400 mt-0.5">${timeStr}</p>
+                                <div class="mt-1 flex items-center gap-2">
+                                    <span class="text-[10px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">Точность: ${(e.confidence * 100).toFixed(0)}%</span>
+                                    <span class="text-[10px] bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded">${e.event_type}</span>
+                                </div>
+                            </div>
+                            ${imgHtml}
+                        </div>
+                    `;
+                });
+                timeline.innerHTML = html;
+            });
+    }
+
+    function saveVisitorDetails(e) {
+        e.preventDefault();
+        const name = document.getElementById('visitor-name').value.trim();
+        const notes = document.getElementById('visitor-notes').value.trim();
+        
+        fetch(`/api/visitors/${visitorId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name === "" ? null : name,
+                notes: notes === "" ? null : notes,
+                is_flagged: isFlagged,
+                is_employee: isEmployee
+            })
+        })
+        .then(res => {
+            if(!res.ok) throw new Error('Ошибка при сохранении');
+            return res.json();
+        })
+        .then(data => {
+            alert('Изменения сохранены!');
+            fetchVisitorData(); // reload layout
+        })
+        .catch(err => alert(err.message));
+    }
+
+    // Init
+    fetchVisitorData();
+    fetchVisitorHistory();
+</script>
+{% endblock %}

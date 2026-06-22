@@ -39,6 +39,8 @@ class AIWorker:
         # Stats for logging
         self._face_stats = {"attempts": 0, "detections": 0, "new": 0, "recognized": 0}
         self._last_stats_log = 0
+        self._last_scanning_enabled_check = 0
+        self._visitor_scanning_enabled = True
 
         
     def add_pipeline(self, pipeline):
@@ -101,7 +103,7 @@ class AIWorker:
 
     def _process_faces(self, frame, bboxes, ids, res):
         from libs.database import SessionLocal
-        from libs.models import Visitor
+        from libs.models import Visitor, GlobalSetting
         import uuid
         import os
         from datetime import datetime
@@ -121,6 +123,19 @@ class AIWorker:
                   f"{s['new']} new visitors, {s['recognized']} recognized | "
                   f"Cache: {len(self.track_to_visitor)} tracked, "
                   f"{len(self._face_attempt_count)} pending")
+
+        # Check if scanning is globally enabled (every 10 seconds)
+        if now - self._last_scanning_enabled_check > 10:
+            db_check = SessionLocal()
+            try:
+                setting = db_check.query(GlobalSetting).filter_by(key="visitor_scanning_enabled").first()
+                self._visitor_scanning_enabled = (setting.value.lower() == 'true') if setting else True
+            finally:
+                db_check.close()
+            self._last_scanning_enabled_check = now
+        
+        if not self._visitor_scanning_enabled:
+            return
 
         # Build a map of track_id -> bbox from the result
         # This avoids index mismatch issues between bboxes and ids

@@ -59,6 +59,7 @@ class Visitor(Base):
     face_embedding = Column(Text, nullable=True) # Store as JSON array of floats for sqlite simplicity or BLOB
     face_snapshot = Column(String, nullable=True)
     is_flagged = Column(Boolean, default=False)
+    is_employee = Column(Boolean, default=False)
     
     events = relationship("Event", back_populates="visitor")
 

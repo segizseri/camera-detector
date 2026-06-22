@@ -3,73 +3,116 @@
 {% block title %}База Посетителей{% endblock %}
 
 {% block content %}
-<div class="mb-6">
-    <h1 class="text-3xl font-bold">База Посетителей (Re-ID)</h1>
-    <p class="text-gray-400 text-sm mt-1">Система автоматически распознает лица и ведет историю визитов.</p>
+<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div>
+        <h1 class="text-3xl font-bold">База Посетителей (Re-ID)</h1>
+        <p class="text-gray-400 text-sm mt-1">Система автоматически распознает лица и ведет историю визитов.</p>
+    </div>
+    
+    <!-- Global Face Scanning Toggle -->
+    <div class="flex items-center bg-gray-800 border border-gray-700 px-4 py-2.5 rounded-lg shadow-md">
+        <span class="text-sm font-medium text-gray-300 mr-3">Распознавание лиц:</span>
+        <button id="scanning-toggle-btn" onclick="toggleScanning()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-gray-600">
+            <span id="scanning-toggle-dot" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+        </button>
+    </div>
 </div>
 
 <div class="bg-gray-800 rounded-lg p-4 mb-6 shadow-md flex flex-wrap items-center justify-between gap-4">
-    <div class="flex items-center gap-4">
-        <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow" onclick="loadVisitors()">
+    <div class="flex items-center flex-wrap gap-4">
+        <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow transition flex items-center gap-2" onclick="loadVisitors()">
             <i class="fas fa-sync"></i> Обновить список
         </button>
         
         <div class="flex bg-gray-900 rounded shadow-inner p-1">
-            <button onclick="setFilter('all')" id="filter-btn-all" class="px-3 py-1 text-sm rounded bg-gray-700 text-white transition-colors">Все</button>
-            <button onclick="setFilter('normal')" id="filter-btn-normal" class="px-3 py-1 text-sm rounded text-gray-400 hover:text-white transition-colors">Обычные</button>
-            <button onclick="setFilter('flagged')" id="filter-btn-flagged" class="px-3 py-1 text-sm rounded text-gray-400 hover:text-white transition-colors">Нарушители</button>
+            <button onclick="setFilter('all')" id="filter-btn-all" class="px-3 py-1.5 text-sm rounded bg-gray-700 text-white transition-colors">Все</button>
+            <button onclick="setFilter('normal')" id="filter-btn-normal" class="px-3 py-1.5 text-sm rounded text-gray-400 hover:text-white transition-colors">Обычные</button>
+            <button onclick="setFilter('flagged')" id="filter-btn-flagged" class="px-3 py-1.5 text-sm rounded text-gray-400 hover:text-white transition-colors">Нарушители</button>
+            <button onclick="setFilter('employee')" id="filter-btn-employee" class="px-3 py-1.5 text-sm rounded text-gray-400 hover:text-white transition-colors">Сотрудники</button>
         </div>
     </div>
-    <span id="visitors-count" class="text-gray-400 text-sm"></span>
+    <span id="visitors-count" class="text-gray-400 text-sm font-medium"></span>
 </div>
 
 <div id="visitors-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
     <div class="col-span-full text-center text-gray-500 py-10">Загрузка данных посетителей...</div>
 </div>
 
-<!-- Edit Visitor Modal -->
-<div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center z-50">
-    <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-md overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
-            <h2 class="text-xl font-bold text-white">Редактировать профиль</h2>
-            <button onclick="closeEditModal()" class="text-gray-400 hover:text-white">
-                <i class="fas fa-times"></i>
-            </button>
+<!-- Pagination Controls -->
+<div id="pagination" class="mt-8 flex justify-center items-center gap-2 hidden">
+    <!-- Will be filled dynamically -->
+</div>
+
+<!-- Premium Confirmation Modal -->
+<div id="confirm-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center z-50">
+    <div class="bg-gray-800 rounded-xl shadow-2xl border border-gray-700 w-full max-w-md overflow-hidden transform scale-95 transition-transform duration-200" id="confirm-modal-box">
+        <div class="p-6 flex items-start gap-4">
+            <div class="bg-red-900/50 border border-red-500 text-red-500 rounded-full p-3 flex-shrink-0">
+                <i class="fas fa-exclamation-triangle text-xl"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-white mb-2" id="confirm-title">Подтверждение удаления</h3>
+                <p class="text-sm text-gray-400" id="confirm-message">Вы уверены, что хотите безвозвратно удалить профиль этого посетителя и все связанные события?</p>
+            </div>
         </div>
-        <div class="p-6">
-            <input type="hidden" id="edit-id">
-            
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-300 mb-1">Имя (Опционально)</label>
-                <input type="text" id="edit-name" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500" placeholder="Например: Иван Иванов">
-            </div>
-            
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-300 mb-1">Заметки</label>
-                <textarea id="edit-notes" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white h-24 focus:outline-none focus:border-blue-500" placeholder="Приметы, особенности..."></textarea>
-            </div>
-            
-            <div class="mb-6 flex items-center">
-                <input type="checkbox" id="edit-flagged" class="w-5 h-5 text-red-600 bg-gray-900 border-gray-700 rounded focus:ring-red-500 focus:ring-2">
-                <label for="edit-flagged" class="ml-2 text-sm font-medium text-red-400">Отметить как нарушителя (Flagged)</label>
-            </div>
-            
-            <div class="flex justify-end gap-3">
-                <button onclick="closeEditModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded">Отмена</button>
-                <button onclick="saveVisitor()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded shadow">Сохранить</button>
-            </div>
+        <div class="bg-gray-850 px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
+            <button onclick="closeConfirmModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition">Отмена</button>
+            <button id="confirm-yes-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium shadow transition">Удалить</button>
         </div>
     </div>
 </div>
 
 <script>
     let currentFilter = 'all';
+    let currentPage = 1;
+    const limit = 24;
+    let isScanningEnabled = true;
+
+    // Load scanning settings on startup
+    function fetchScanningSetting() {
+        fetch('/api/settings/')
+            .then(res => res.json())
+            .then(data => {
+                isScanningEnabled = data.visitor_scanning_enabled !== 'false';
+                updateScanningToggleUI();
+            });
+    }
+
+    function updateScanningToggleUI() {
+        const btn = document.getElementById('scanning-toggle-btn');
+        const dot = document.getElementById('scanning-toggle-dot');
+        if (isScanningEnabled) {
+            btn.classList.remove('bg-gray-600');
+            btn.classList.add('bg-green-600');
+            dot.classList.remove('translate-x-0');
+            dot.classList.add('translate-x-5');
+        } else {
+            btn.classList.remove('bg-green-600');
+            btn.classList.add('bg-gray-600');
+            dot.classList.remove('translate-x-5');
+            dot.classList.add('translate-x-0');
+        }
+    }
+
+    function toggleScanning() {
+        isScanningEnabled = !isScanningEnabled;
+        updateScanningToggleUI();
+        
+        fetch('/api/settings/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                settings: { visitor_scanning_enabled: isScanningEnabled ? 'true' : 'false' }
+            })
+        });
+    }
     
     function setFilter(filter) {
         currentFilter = filter;
+        currentPage = 1;
         
         // Update button styles
-        ['all', 'normal', 'flagged'].forEach(f => {
+        ['all', 'normal', 'flagged', 'employee'].forEach(f => {
             const btn = document.getElementById(`filter-btn-${f}`);
             if(f === filter) {
                 btn.classList.add('bg-gray-700', 'text-white');
@@ -83,44 +126,55 @@
         loadVisitors();
     }
 
-    function loadVisitors() {
+    function loadVisitors(page = 1) {
+        currentPage = page;
         const grid = document.getElementById('visitors-grid');
         grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10"><i class="fas fa-spinner fa-spin mr-2"></i> Загрузка...</div>';
         
-        fetch(`/api/visitors/?status_filter=${currentFilter}`)
+        fetch(`/api/visitors/?status_filter=${currentFilter}&page=${currentPage}&limit=${limit}`)
             .then(res => res.json())
-            .then(data => renderVisitors(data))
+            .then(data => {
+                renderVisitors(data.items);
+                renderPagination(data.page, data.pages);
+                
+                const countEl = document.getElementById('visitors-count');
+                const filterNames = {
+                    'all': 'Всего',
+                    'normal': 'Обычных',
+                    'flagged': 'Нарушителей',
+                    'employee': 'Сотрудников'
+                };
+                countEl.textContent = `${filterNames[currentFilter] || 'Всего'}: ${data.total}`;
+            })
             .catch(err => {
                 grid.innerHTML = '<div class="col-span-full text-center text-red-400 py-10">Ошибка загрузки: ' + err.message + '</div>';
             });
     }
 
-    // Store visitors globally to populate the edit modal easily
-    let loadedVisitors = {};
-
     function renderVisitors(visitors) {
         const grid = document.getElementById('visitors-grid');
-        const countEl = document.getElementById('visitors-count');
         grid.innerHTML = '';
-        loadedVisitors = {};
         
         if (!visitors || visitors.length === 0) {
             grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">Посетителей не найдено.</div>';
-            countEl.textContent = '';
             return;
         }
 
-        const flagged = visitors.filter(v => v.is_flagged).length;
-        countEl.textContent = `Отображено: ${visitors.length} (Нарушителей: ${flagged})`;
-
         visitors.forEach(v => {
-            loadedVisitors[v.id] = v;
             const card = document.createElement('div');
             
-            const borderClass = v.is_flagged ? 'border-red-500 border-2' : 'border-gray-700';
-            const statusHtml = v.is_flagged 
-                ? '<span class="text-xs bg-red-900 text-red-200 px-2 py-1 rounded-full shadow"><i class="fas fa-exclamation-triangle"></i> Нарушитель</span>'
-                : '<span class="text-xs bg-green-900 text-green-200 px-2 py-1 rounded-full shadow">Обычный</span>';
+            let borderClass = 'border-gray-700';
+            let statusHtml = '';
+            
+            if (v.is_employee) {
+                borderClass = 'border-blue-500 border-2';
+                statusHtml = '<span class="text-xs bg-blue-900 text-blue-200 px-2.5 py-1 rounded-full shadow-md"><i class="fas fa-user-tie"></i> Сотрудник</span>';
+            } else if (v.is_flagged) {
+                borderClass = 'border-red-500 border-2';
+                statusHtml = '<span class="text-xs bg-red-900 text-red-200 px-2.5 py-1 rounded-full shadow-md"><i class="fas fa-exclamation-triangle"></i> Нарушитель</span>';
+            } else {
+                statusHtml = '<span class="text-xs bg-green-900 text-green-200 px-2.5 py-1 rounded-full shadow-md">Обычный клиент</span>';
+            }
             
             card.className = `bg-gray-800 rounded-lg border ${borderClass} overflow-hidden shadow-lg flex flex-col`;
             
@@ -130,14 +184,14 @@
             
             const imgPath = v.face_snapshot ? `/media/snapshots/${v.face_snapshot}` : '/static/favicon.png';
             
-            // Use provided name or default ID string
+            // Use name or default ID string
             const displayName = v.name ? v.name : `Посетитель #${v.id.substring(0, 6)}`;
             
             card.innerHTML = `
                 <div class="h-48 bg-gray-900 overflow-hidden relative group">
                     <img src="${imgPath}" class="w-full h-full object-cover" alt="Face" onerror="this.src='/static/favicon.png'">
                     <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-90"></div>
-                    <div class="absolute bottom-2 left-2">
+                    <div class="absolute bottom-2.5 left-2.5">
                         ${statusHtml}
                     </div>
                 </div>
@@ -150,11 +204,11 @@
                     </div>
                     ${v.notes ? `<div class="mt-3 p-2 bg-gray-700 rounded text-xs text-gray-300 italic line-clamp-2" title="${v.notes}">${v.notes}</div>` : ''}
                 </div>
-                <div class="p-3 bg-gray-850 border-t border-gray-700 flex justify-between items-center">
-                    <button class="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1" onclick="openEditModal('${v.id}')">
-                        <i class="fas fa-edit"></i> Редактировать
-                    </button>
-                    <button class="text-sm text-red-400 hover:text-red-300 flex items-center gap-1" onclick="deleteVisitor('${v.id}')">
+                <div class="p-3 bg-gray-850 border-t border-gray-700 flex justify-between items-center gap-3">
+                    <a class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition cursor-pointer shadow-sm" href="/visitors/${v.id}">
+                        <i class="fas fa-user-edit"></i> Профиль
+                    </a>
+                    <button class="text-sm bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition cursor-pointer shadow-sm ml-auto" onclick="confirmDelete('${v.id}')">
                         <i class="fas fa-trash"></i> Удалить
                     </button>
                 </div>
@@ -163,63 +217,87 @@
         });
     }
 
-    function deleteVisitor(id) {
-        if(confirm('Вы уверены, что хотите удалить профиль этого посетителя?')) {
-            fetch(`/api/visitors/${id}`, { method: 'DELETE' })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'ok') {
-                    loadVisitors();
-                }
-            });
+    function renderPagination(page, pages) {
+        const wrapper = document.getElementById('pagination');
+        if (pages <= 1) {
+            wrapper.innerHTML = '';
+            wrapper.classList.add('hidden');
+            return;
         }
-    }
-    
-    function openEditModal(id) {
-        const v = loadedVisitors[id];
-        if(!v) return;
         
-        document.getElementById('edit-id').value = v.id;
-        document.getElementById('edit-name').value = v.name || '';
-        document.getElementById('edit-notes').value = v.notes || '';
-        document.getElementById('edit-flagged').checked = v.is_flagged;
+        wrapper.classList.remove('hidden');
+        let html = '';
         
-        document.getElementById('edit-modal').classList.remove('hidden');
-    }
-    
-    function closeEditModal() {
-        document.getElementById('edit-modal').classList.add('hidden');
-    }
-    
-    function saveVisitor() {
-        const id = document.getElementById('edit-id').value;
-        const name = document.getElementById('edit-name').value.trim();
-        const notes = document.getElementById('edit-notes').value.trim();
-        const is_flagged = document.getElementById('edit-flagged').checked;
+        // Prev button
+        if (page > 1) {
+            html += `<button onclick="loadVisitors(${page - 1})" class="px-3.5 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition"><i class="fas fa-chevron-left"></i></button>`;
+        } else {
+            html += `<button disabled class="px-3.5 py-2 rounded-lg bg-gray-800 text-gray-600 text-sm font-medium cursor-not-allowed"><i class="fas fa-chevron-left"></i></button>`;
+        }
         
-        fetch(`/api/visitors/${id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                name: name === "" ? null : name,
-                notes: notes === "" ? null : notes,
-                is_flagged: is_flagged
-            })
-        })
-        .then(res => {
-            if(!res.ok) throw new Error('Ошибка сохранения');
-            return res.json();
-        })
-        .then(data => {
-            closeEditModal();
-            loadVisitors(); // refresh grid
-        })
-        .catch(err => alert(err.message));
+        // Page numbers
+        for (let i = 1; i <= pages; i++) {
+            if (i === page) {
+                html += `<button class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold shadow-md">${i}</button>`;
+            } else {
+                html += `<button onclick="loadVisitors(${i})" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition">${i}</button>`;
+            }
+        }
+        
+        // Next button
+        if (page < pages) {
+            html += `<button onclick="loadVisitors(${page + 1})" class="px-3.5 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition"><i class="fas fa-chevron-right"></i></button>`;
+        } else {
+            html += `<button disabled class="px-3.5 py-2 rounded-lg bg-gray-800 text-gray-600 text-sm font-medium cursor-not-allowed"><i class="fas fa-chevron-right"></i></button>`;
+        }
+        
+        wrapper.innerHTML = html;
     }
 
-    // Auto-load on page open
+    // Modal Confirmation Logic
+    let visitorIdToDelete = null;
+
+    function confirmDelete(id) {
+        visitorIdToDelete = id;
+        const modal = document.getElementById('confirm-modal');
+        const box = document.getElementById('confirm-modal-box');
+        
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        setTimeout(() => {
+            box.classList.remove('scale-95');
+            box.classList.add('scale-100');
+        }, 50);
+
+        document.getElementById('confirm-yes-btn').onclick = function() {
+            if (visitorIdToDelete) {
+                fetch(`/api/visitors/${visitorIdToDelete}`, { method: 'DELETE' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        closeConfirmModal();
+                        loadVisitors(currentPage);
+                    }
+                });
+            }
+        };
+    }
+
+    function closeConfirmModal() {
+        const modal = document.getElementById('confirm-modal');
+        const box = document.getElementById('confirm-modal-box');
+        
+        box.classList.remove('scale-100');
+        box.classList.add('scale-95');
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            visitorIdToDelete = null;
+        }, 150);
+    }
+
+    // Initialize
+    fetchScanningSetting();
     loadVisitors();
 </script>
 {% endblock %}

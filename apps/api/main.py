@@ -145,3 +145,7 @@ async def finetune_page(request: Request):
 @app.get("/visitors", response_class=HTMLResponse)
 async def visitors_page(request: Request):
     return templates.TemplateResponse("visitors.html", {"request": request})
+
+@app.get("/visitors/{visitor_id}", response_class=HTMLResponse)
+async def visitor_detail_page(request: Request, visitor_id: str):
+    return templates.TemplateResponse("visitor_detail.html", {"request": request, "visitor_id": visitor_id})
