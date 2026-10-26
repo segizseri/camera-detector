@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     SNAPSHOTS_DIR: str = os.getenv("SNAPSHOTS_DIR", "data/media/snapshots")
     CLIPS_DIR: str = os.getenv("CLIPS_DIR", "data/media/clips")
     MODELS_DIR: str = os.getenv("MODELS_DIR", "data/models")
+    # Ролики для обучения ActionLSTM: <DATASET_DIR>/<класс>/*.mp4 (scripts/train_lstm.py)
+    DATASET_DIR: str = os.getenv("DATASET_DIR", "data/dataset")
     ACTION_MODEL_PATH: str = os.getenv("ACTION_MODEL_PATH", "data/models/action_lstm.pt")
     DETECTION_TESTS_DIR: str = os.getenv("DETECTION_TESTS_DIR", "data/media/detection-tests")
     DETECTION_TEST_MAX_UPLOAD_MB: int = int(os.getenv("DETECTION_TEST_MAX_UPLOAD_MB", "1024"))

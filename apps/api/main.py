@@ -10,7 +10,7 @@ from libs import auth
 from libs.config import settings as app_settings
 from libs.database import engine, Base
 from libs.models import Camera, Event, Webhook
-from apps.api.routers import nvr, cameras, events, webhooks, settings, stats, buses, visitors, system, detection_tests
+from apps.api.routers import nvr, cameras, events, webhooks, settings, stats, buses, visitors, system, detection_tests, dataset
 
 Base.metadata.create_all(bind=engine)
 
@@ -115,6 +115,7 @@ app.include_router(buses.router, prefix="/api/buses", tags=["Buses"])
 app.include_router(visitors.router, prefix="/api/visitors", tags=["Visitors"])
 app.include_router(system.router, prefix="/api/system", tags=["System"])
 app.include_router(detection_tests.router, prefix="/api/detection-tests", tags=["Detection tests"])
+app.include_router(dataset.router, prefix="/api/dataset", tags=["Dataset"])
 
 @app.get("/health", include_in_schema=False)
 async def health():

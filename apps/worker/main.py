@@ -14,6 +14,7 @@ from libs.config import settings
 from libs.database import SessionLocal
 from libs.models import Camera
 from libs.retention import cleanup_retention
+from libs import training
 from apps.worker.pipeline import CameraPipeline
 from apps.worker.ai import AIWorker
 from apps.worker.detection_test_runner import DetectionTestRunner
@@ -31,6 +32,9 @@ def worker_main():
     
     active_pipelines = {}
     last_retention_sweep = 0
+    # После дообучения конвейеры камер пересоздаются и загружают новые веса.
+    reload_pipelines = threading.Event()
+    training.recover_stale_status()
     
     try:
         while True:
@@ -61,14 +65,23 @@ def worker_main():
                 continue
             
             import os
-            import subprocess
             if os.path.exists("data/.trigger_train_lstm"):
-                print("Found training trigger! Starting scripts/train_lstm.py in background...")
                 try:
                     os.remove("data/.trigger_train_lstm")
-                    subprocess.Popen(["python", "scripts/train_lstm.py", "--extract", "--train"])
+                    if training.start_in_background(on_success=reload_pipelines.set):
+                        print("Found training trigger! Training ActionLSTM in background, log: "
+                              f"{training.log_path()}")
+                    else:
+                        print("Training trigger ignored: training is already running")
                 except Exception as e:
                     print(f"Failed to start training: {e}")
+
+            if reload_pipelines.is_set():
+                reload_pipelines.clear()
+                print("Training finished: restarting camera pipelines with the new ActionLSTM weights")
+                for cam_id in list(active_pipelines):
+                    ai_engine.remove_pipeline(cam_id)
+                    active_pipelines.pop(cam_id).stop()
             
             # Start/Stop logic
             current_cam_ids = set()

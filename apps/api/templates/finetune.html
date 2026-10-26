@@ -2,7 +2,7 @@
 {% from "_ui.html" import icon, page_header %}
 {% block title %}Сбор датасета и обучение{% endblock %}
 {% block content %}
-{{ page_header("AI и обучение", "Сохраняйте кадры с камер в датасет и запускайте дообучение модели действий на сервере.") }}
+{{ page_header("AI и обучение", "Записывайте ролики с камер по классам действий и дообучайте модель на своих данных.") }}
 
 <nav class="tabs" aria-label="Разделы AI">
     <a href="/ai" class="tab">{{ icon("cpu", "icon-sm") }}Мониторинг</a>
@@ -10,35 +10,120 @@
 </nav>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-    <section class="card lg:col-span-2 overflow-hidden" aria-labelledby="viewer-title">
-        <div class="card-header">
-            <h2 class="card-title" id="viewer-title">{{ icon("video", "icon-sm text-subtle") }}Просмотр камеры</h2>
-            <div class="w-full sm:w-72">
-                <label for="camera-select" class="sr-only">Камера</label>
-                <select id="camera-select" class="select input-sm"><option value="">Загрузка камер…</option></select>
+    <div class="lg:col-span-2 space-y-4 min-w-0">
+        <section class="card overflow-hidden" aria-labelledby="viewer-title">
+            <div class="card-header">
+                <h2 class="card-title" id="viewer-title">{{ icon("video", "icon-sm text-subtle") }}Камера</h2>
+                <div class="w-full sm:w-72">
+                    <label for="camera-select" class="sr-only">Камера</label>
+                    <select id="camera-select" class="select input-sm"><option value="">Загрузка камер…</option></select>
+                </div>
             </div>
-        </div>
-        <div class="media-frame media-grid-bg">
-            <video id="player" muted playsinline hidden></video>
-            <div class="media-overlay" data-overlay="idle">{{ icon("video", "icon-xl text-slate-500") }}<span>Выберите камеру, чтобы увидеть поток</span></div>
-            <div class="media-overlay" data-overlay="connecting" hidden><span class="spinner spinner-lg" aria-hidden="true"></span><span>Подключение к потоку…</span></div>
-            <div class="media-overlay" data-overlay="error" hidden>
-                <span class="text-red-300">{{ icon("video-off", "icon-xl") }}</span><span class="font-semibold text-slate-100">Поток недоступен</span>
-                <span class="text-xs text-slate-400" data-error-text></span>
-                <button type="button" class="btn btn-secondary btn-sm" id="btn-replay">{{ icon("refresh", "icon-sm") }}Повторить</button>
+            <div class="media-frame media-grid-bg">
+                <video id="player" muted playsinline hidden></video>
+                <div class="media-overlay" data-overlay="idle">{{ icon("video", "icon-xl text-slate-500") }}<span>Выберите камеру, чтобы увидеть поток</span></div>
+                <div class="media-overlay" data-overlay="connecting" hidden><span class="spinner spinner-lg" aria-hidden="true"></span><span>Подключение к потоку…</span></div>
+                <div class="media-overlay" data-overlay="error" hidden>
+                    <span class="text-red-300">{{ icon("video-off", "icon-xl") }}</span><span class="font-semibold text-slate-100">Поток недоступен</span>
+                    <span class="text-xs text-slate-400" data-error-text></span>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-replay">{{ icon("refresh", "icon-sm") }}Повторить</button>
+                </div>
+                <div class="tile-badges">
+                    <span class="badge badge-overlay" id="live-badge" hidden><span class="dot dot-live text-red-500"></span>LIVE</span>
+                    <span class="badge badge-overlay" id="rec-badge" hidden><span class="dot dot-live text-red-500"></span>REC <span class="num" id="rec-left"></span></span>
+                </div>
             </div>
-            <div class="tile-badges"><span class="badge badge-overlay" id="live-badge" hidden><span class="dot dot-live text-red-500"></span>LIVE</span></div>
-        </div>
-        <div class="card-body text-sm text-muted flex items-start gap-2">
-            {{ icon("info", "icon-sm mt-0.5 text-subtle") }}
-            <span>Кадры снимаются с RTSP-потока камеры на сервере в полном качестве, а не с картинки в браузере.</span>
-        </div>
-    </section>
+            <div class="card-body text-sm text-muted flex items-start gap-2">
+                {{ icon("info", "icon-sm mt-0.5 text-subtle") }}
+                <span>Ролики пишутся сервером напрямую с RTSP-потока камеры, а не с картинки в браузере.</span>
+            </div>
+        </section>
+
+        <section class="card" aria-labelledby="dataset-title">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title" id="dataset-title">{{ icon("database", "icon-sm text-subtle") }}Датасет</h2>
+                    <p class="card-subtitle">Ролики по классам в <span class="mono">data/dataset</span>. Цель — не меньше <span id="recommended">50</span> роликов на класс, который хотите распознавать, и столько же нормы.</p>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-dataset">{{ icon("refresh", "icon-sm") }}Обновить</button>
+            </div>
+            <ul id="dataset-classes" class="divide-y divide-line">
+                {% for _ in range(6) %}<li class="px-5 py-3" aria-hidden="true"><div class="skeleton skeleton-text w-1/2"></div></li>{% endfor %}
+            </ul>
+            <div class="border-t border-line" id="clips-panel" hidden>
+                <div class="flex items-center justify-between gap-3 px-5 pt-4">
+                    <h3 class="font-semibold text-fg" id="clips-title">Ролики</h3>
+                    <span class="text-xs text-subtle">Последние 20</span>
+                </div>
+                <ul id="clips-list" class="px-5 py-3 space-y-2"></ul>
+            </div>
+        </section>
+    </div>
 
     <div class="space-y-4">
-        <section class="card" aria-labelledby="capture-title">
-            <div class="card-header"><h2 class="card-title" id="capture-title">{{ icon("camera", "icon-sm text-subtle") }}1. Запись кадров</h2></div>
+        <section class="card" aria-labelledby="record-title">
+            <div class="card-header"><h2 class="card-title" id="record-title">{{ icon("record", "icon-sm text-subtle") }}1. Запись роликов</h2></div>
             <div class="card-body space-y-4">
+                <div class="field">
+                    <label class="label" for="record-class">Что происходит в кадре</label>
+                    <select id="record-class" class="select">
+                        <option value="1_fight">Драка</option>
+                        <option value="0_normal">Норма — обычное поведение</option>
+                        <option value="2_bullying">Буллинг</option>
+                        <option value="3_theft">Кража из кассы</option>
+                        <option value="4_shoplifting">Кража с витрины</option>
+                        <option value="5_eating">Поедание у витрины</option>
+                    </select>
+                    <p class="hint" id="class-hint"></p>
+                </div>
+                <div class="field">
+                    <span class="label" id="seconds-label">Длительность</span>
+                    <div class="seg seg-block" id="record-seconds" role="radiogroup" aria-labelledby="seconds-label">
+                        <label><input type="radio" name="seconds" value="10" class="sr-only">10 с</label>
+                        <label><input type="radio" name="seconds" value="15" class="sr-only" checked>15 с</label>
+                        <label><input type="radio" name="seconds" value="20" class="sr-only">20 с</label>
+                        <label><input type="radio" name="seconds" value="30" class="sr-only">30 с</label>
+                    </div>
+                    <p class="hint">Модель смотрит на 6 секунд движения человека, поэтому ролик должен быть длиннее и действие — идти почти весь ролик.</p>
+                </div>
+                <button type="button" id="btn-record-clip" class="btn btn-danger btn-block btn-lg" disabled>{{ icon("record", "icon-sm") }}Записать ролик</button>
+                <div class="progress" id="record-progress" hidden role="progressbar" aria-label="Запись ролика" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar" data-active="true" style="width:0%"></div></div>
+                <details class="rounded-lg border border-line px-3.5 py-2.5 text-sm">
+                    <summary class="cursor-pointer font-semibold text-fg">Как записать хороший датасет</summary>
+                    <ul class="mt-2 space-y-1.5 text-muted list-disc pl-4">
+                        <li>Инсценируйте действие с участниками, которые согласны на съёмку: толчки, удары по воздуху, борьба, захват.</li>
+                        <li>Весь человек должен быть в кадре, без долгих перекрытий.</li>
+                        <li>Меняйте людей, одежду, ракурсы, освещение и места в кадре.</li>
+                        <li>Запишите столько же «Нормы» на тех же камерах: разговоры, проходы, объятия, рукопожатия, суету. Иначе модель будет видеть драку в любой активности.</li>
+                        <li>Неудачные дубли удаляйте из списка роликов в карточке «Датасет».</li>
+                    </ul>
+                </details>
+            </div>
+        </section>
+
+        <section class="card" aria-labelledby="train-title">
+            <div class="card-header">
+                <h2 class="card-title" id="train-title">{{ icon("sparkles", "icon-sm text-subtle") }}2. Дообучение модели</h2>
+                <span id="train-state"></span>
+            </div>
+            <div class="card-body space-y-3">
+                <p class="text-sm text-muted">Сервер извлечёт позы из всех роликов, проверит модель на 20% роликов, которых она не видела при обучении, и обучит итоговую модель на всех данных. Камеры подхватят её автоматически.</p>
+                <div id="train-status" aria-live="polite"></div>
+                <button type="button" id="btn-train-ai" class="btn btn-primary btn-block">{{ icon("sparkles", "icon-sm") }}Запустить дообучение</button>
+                <details class="text-sm" id="train-log-box" hidden>
+                    <summary class="cursor-pointer font-semibold text-fg">Журнал обучения</summary>
+                    <pre class="mt-2 max-h-64 overflow-auto rounded-md bg-surface-2 border border-line p-3 mono text-xs whitespace-pre-wrap" id="train-log"></pre>
+                </details>
+            </div>
+        </section>
+
+        <details class="card" id="frames-card">
+            <summary class="card-header cursor-pointer list-none">
+                <span class="card-title">{{ icon("camera", "icon-sm text-subtle") }}Снимки кадров</span>
+                <span class="text-xs text-subtle">в обучение действий не входят</span>
+            </summary>
+            <div class="card-body space-y-4">
+                <p class="text-sm text-muted">Отдельные JPG-кадры пригодятся для разметки людей и предметов. Модели действий нужны видеоролики.</p>
                 <div class="field">
                     <label class="label" for="capture-interval">Интервал записи</label>
                     <div class="flex items-center gap-2">
@@ -48,69 +133,64 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <button type="button" id="btn-capture" class="btn btn-secondary" disabled>{{ icon("camera", "icon-sm") }}Один кадр</button>
-                    <button type="button" id="btn-record" class="btn btn-danger" disabled>{{ icon("record", "icon-sm") }}Начать запись</button>
+                    <button type="button" id="btn-record" class="btn btn-secondary" disabled>{{ icon("record", "icon-sm") }}Серия кадров</button>
                 </div>
                 <div id="capture-feedback" aria-live="polite"></div>
+                <form class="space-y-3" id="save-form" novalidate hidden>
+                    <div class="field">
+                        <label class="label" for="dataset-folder">Папка <span class="badge badge-primary badge-sm ml-1" id="frames-count">0 кадров</span></label>
+                        <input list="dataset-folders" id="dataset-folder" class="input input-mono" placeholder="например, 4_shoplifting" required spellcheck="false" autocomplete="off">
+                        <datalist id="dataset-folders">
+                            {% for folder in dataset_folders %}<option value="{{ folder }}">{% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="submit" id="btn-save-session" class="btn btn-primary flex-1">{{ icon("check", "icon-sm") }}Сохранить кадры</button>
+                        <button type="button" id="btn-discard" class="btn btn-secondary">Отменить</button>
+                    </div>
+                </form>
             </div>
-        </section>
-
-        <section class="card" aria-labelledby="save-title" id="step-save" hidden>
-            <div class="card-header">
-                <h2 class="card-title" id="save-title">{{ icon("folder", "icon-sm text-subtle") }}2. Сохранение в датасет</h2>
-                <span class="badge badge-primary" id="frames-count">0 кадров</span>
-            </div>
-            <form class="card-body space-y-4" id="save-form" novalidate>
-                <div class="field">
-                    <label class="label" for="dataset-folder">Папка класса</label>
-                    <input list="dataset-folders" id="dataset-folder" class="input input-mono" placeholder="например, 4_shoplifting" required spellcheck="false" autocomplete="off">
-                    <datalist id="dataset-folders">
-                        {% for folder in dataset_folders %}<option value="{{ folder }}">{% endfor %}
-                    </datalist>
-                    <p class="hint">Существующие папки: {% if dataset_folders %}{{ dataset_folders | sort | join(", ") }}{% else %}пока нет{% endif %}.</p>
-                </div>
-                <div class="flex gap-2">
-                    <button type="submit" id="btn-save-session" class="btn btn-primary flex-1">{{ icon("check", "icon-sm") }}Сохранить</button>
-                    <button type="button" id="btn-discard" class="btn btn-secondary">Отменить</button>
-                </div>
-            </form>
-        </section>
-
-        <section class="card" aria-labelledby="train-title">
-            <div class="card-header"><h2 class="card-title" id="train-title">{{ icon("sparkles", "icon-sm text-subtle") }}3. Дообучение модели</h2></div>
-            <div class="card-body space-y-3">
-                <p class="text-sm text-muted">Сервер извлечёт позы из датасета и переобучит LSTM-модель действий. Процесс идёт в фоне и нагружает CPU или GPU.</p>
-                <button type="button" id="btn-train-ai" class="btn btn-primary btn-block">{{ icon("sparkles", "icon-sm") }}Запустить дообучение</button>
-                <div id="train-feedback" aria-live="polite"></div>
-            </div>
-        </section>
+        </details>
     </div>
 </div>
+
+<dialog id="clip-dialog" class="modal modal-lg" aria-labelledby="clip-dialog-title">
+    <div class="modal-header">
+        <h2 class="modal-title" id="clip-dialog-title">Ролик</h2>
+        <button type="button" class="btn btn-ghost btn-icon" data-dialog-close aria-label="Закрыть">{{ icon("x") }}</button>
+    </div>
+    <div class="modal-body"><div class="media-frame rounded-lg border border-line"><video id="clip-video" controls preload="metadata"></video></div></div>
+    <div class="modal-footer"><button type="button" class="btn btn-primary btn-sm" data-dialog-close>Закрыть</button></div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/vendor/hls/hls.light.min.js"></script>
 <script>
     (function () {
-        const { api, escapeHtml, icon } = UI;
+        const { api, escapeHtml, icon, fmt, plural } = UI;
         const select = document.getElementById('camera-select');
         const video = document.getElementById('player');
         const frame = video.parentElement;
+        const CLASS_HINTS = {
+            '1_fight': 'Двое и больше участников: толчки, удары, борьба, захват. Действие почти весь ролик.',
+            '0_normal': 'Обычное поведение на тех же камерах: проходы, разговоры, объятия, рукопожатия, очередь у кассы.',
+            '2_bullying': 'Один человек длительно и односторонне давит на другого, рядом могут стоять зрители.',
+            '3_theft': 'Рука в денежном ящике кассы вне оплаты.',
+            '4_shoplifting': 'Человек берёт товар с витрины и прячет в карман, сумку или под одежду.',
+            '5_eating': 'Человек ест или пьёт товар у витрины: несколько раз подносит его ко рту.',
+        };
         let player = null;
         let camId = null;
-        let sessionId = null;
-        let frames = 0;
-        let recordTimer = null;
+        let summary = null;
+        let selectedClass = null;
+        let trainPoll = null;
 
         function onState(state, detail) {
             frame.querySelectorAll('[data-overlay]').forEach((el) => { el.hidden = el.dataset.overlay !== state; });
             video.hidden = !(state === 'playing' || state === 'connecting');
             document.getElementById('live-badge').hidden = state !== 'playing';
             if (state === 'error') frame.querySelector('[data-error-text]').textContent = detail || '';
-        }
-
-        function feedback(box, type, text) {
-            const icons = { success: 'check-circle', danger: 'alert-circle', info: 'info' };
-            document.getElementById(box).innerHTML = `<div class="alert alert-${type}">${type === 'info' ? '<span class="spinner text-info-fg" aria-hidden="true"></span>' : icon(icons[type])}<div class="min-w-0 break-words">${text}</div></div>`;
         }
 
         async function loadCameras() {
@@ -125,16 +205,231 @@
         }
 
         select.addEventListener('change', () => {
-            if (recordTimer) stopRecording();
+            if (framesTimer) stopFrameSeries();
             player?.stop();
             camId = select.value || null;
-            document.getElementById('btn-capture').disabled = !camId;
-            document.getElementById('btn-record').disabled = !camId;
+            ['btn-capture', 'btn-record', 'btn-record-clip'].forEach((id) => { document.getElementById(id).disabled = !camId; });
             if (!camId) { onState('idle'); return; }
             player = new UI.LivePlayer(video, camId, { onState });
             player.start();
         });
         document.getElementById('btn-replay').addEventListener('click', () => player?.start());
+
+        /* ---------- Датасет ---------- */
+        function renderSummary() {
+            document.getElementById('recommended').textContent = summary.recommended_clips;
+            document.getElementById('dataset-classes').innerHTML = summary.classes.map((c) => {
+                const pct = Math.min(100, Math.round((c.clips / summary.recommended_clips) * 100));
+                const enough = c.clips >= summary.recommended_clips;
+                return `<li>
+                    <button type="button" class="w-full text-left px-5 py-3 hover:bg-surface-2 transition-colors ${selectedClass === c.folder ? 'bg-surface-2' : ''}" data-class="${c.folder}" aria-pressed="${selectedClass === c.folder}">
+                        <span class="flex items-center justify-between gap-3">
+                            <span class="font-medium text-fg">${escapeHtml(c.title)} <span class="mono text-xs text-subtle">${c.folder}</span></span>
+                            <span class="text-sm num ${enough ? 'text-success-fg' : c.clips ? 'text-fg' : 'text-subtle'}">${c.clips} ${plural(c.clips, ['ролик', 'ролика', 'роликов'])}${c.frames ? `<span class="text-subtle"> · ${c.frames} кадр.</span>` : ''}</span>
+                        </span>
+                        <span class="progress h-1.5 mt-2 block"><span class="progress-bar block" data-state="${enough ? 'completed' : ''}" style="width:${pct}%"></span></span>
+                    </button>
+                </li>`;
+            }).join('');
+            if (selectedClass) renderClips();
+        }
+
+        function renderClips() {
+            const cls = summary.classes.find((c) => c.folder === selectedClass);
+            const panel = document.getElementById('clips-panel');
+            panel.hidden = !cls;
+            if (!cls) return;
+            document.getElementById('clips-title').textContent = `Ролики: ${cls.title}`;
+            document.getElementById('clips-list').innerHTML = cls.recent.length
+                ? cls.recent.map((clip) => `<li class="flex items-center gap-3 rounded-lg border border-line bg-surface-2 px-3 py-2">
+                        ${icon('film', 'icon-sm text-subtle')}
+                        <span class="min-w-0 flex-1"><span class="block text-sm text-fg truncate" title="${escapeHtml(clip.name)}">${escapeHtml(clip.name)}</span>
+                        <span class="block text-xs text-subtle">${escapeHtml(fmt.dateTime(clip.modified_at))} · ${fmt.bytes(clip.size_bytes)}</span></span>
+                        <button type="button" class="btn btn-ghost btn-sm btn-icon" data-play="${escapeHtml(clip.name)}" aria-label="Посмотреть ${escapeHtml(clip.name)}">${icon('play', 'icon-sm')}</button>
+                        <button type="button" class="btn btn-ghost btn-sm btn-icon text-critical-fg" data-delete="${escapeHtml(clip.name)}" aria-label="Удалить ${escapeHtml(clip.name)}">${icon('trash', 'icon-sm')}</button>
+                    </li>`).join('')
+                : `<li>${UI.emptyState({ iconName: 'film', title: 'Роликов пока нет', text: 'Выберите камеру и запишите первый ролик для этого класса.' })}</li>`;
+        }
+
+        async function loadSummary() {
+            try {
+                summary = await api('/api/dataset/summary');
+                renderSummary();
+            } catch (error) {
+                document.getElementById('dataset-classes').innerHTML = `<li>${UI.errorState(error.message)}</li>`;
+            }
+        }
+
+        document.getElementById('dataset-classes').addEventListener('click', (event) => {
+            if (event.target.closest('[data-retry]')) { loadSummary(); return; }
+            const row = event.target.closest('[data-class]');
+            if (!row) return;
+            selectedClass = selectedClass === row.dataset.class ? null : row.dataset.class;
+            renderSummary();
+            document.getElementById('clips-panel').hidden = !selectedClass;
+        });
+        document.getElementById('btn-refresh-dataset').addEventListener('click', loadSummary);
+
+        document.getElementById('clips-list').addEventListener('click', async (event) => {
+            const play = event.target.closest('[data-play]');
+            const del = event.target.closest('[data-delete]');
+            const clipUrl = (name) => `/api/dataset/clips/${encodeURIComponent(selectedClass)}/${encodeURIComponent(name)}`;
+            if (play) {
+                document.getElementById('clip-dialog-title').textContent = play.dataset.play;
+                const player = document.getElementById('clip-video');
+                player.src = clipUrl(play.dataset.play);
+                UI.openDialog('clip-dialog');
+                player.play().catch(() => {});
+            }
+            if (del) {
+                const ok = await UI.confirm({ title: 'Удалить ролик?', message: `«${del.dataset.delete}» будет удалён из датасета.`, confirmText: 'Удалить' });
+                if (!ok) return;
+                try {
+                    await api(clipUrl(del.dataset.delete), { method: 'DELETE' });
+                    UI.toast('Ролик удалён');
+                    loadSummary();
+                } catch (error) {
+                    UI.toast(error.message, { type: 'error', title: 'Не удалось удалить ролик' });
+                }
+            }
+        });
+        document.getElementById('clip-dialog').addEventListener('close', () => {
+            const player = document.getElementById('clip-video');
+            player.pause();
+            player.removeAttribute('src');
+            player.load();
+        });
+
+        /* ---------- Запись ролика ---------- */
+        const classSelect = document.getElementById('record-class');
+        const syncHint = () => { document.getElementById('class-hint').textContent = CLASS_HINTS[classSelect.value] || ''; };
+        classSelect.addEventListener('change', syncHint);
+        syncHint();
+
+        document.getElementById('btn-record-clip').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            const seconds = Number(document.querySelector('input[name="seconds"]:checked').value);
+            const folder = classSelect.value;
+            const title = classSelect.selectedOptions[0].textContent.split(' — ')[0];
+            const progress = document.getElementById('record-progress');
+            const bar = progress.firstElementChild;
+            const badge = document.getElementById('rec-badge');
+            const started = Date.now();
+            UI.setBusy(button, true, `Запись ${seconds} с…`);
+            select.disabled = true;
+            progress.hidden = false;
+            badge.hidden = false;
+            const timer = setInterval(() => {
+                const elapsed = (Date.now() - started) / 1000;
+                bar.style.width = `${Math.min(100, (elapsed / seconds) * 100)}%`;
+                progress.setAttribute('aria-valuenow', String(Math.round(Math.min(100, (elapsed / seconds) * 100))));
+                document.getElementById('rec-left').textContent = elapsed < seconds ? `${Math.ceil(seconds - elapsed)} с` : 'сохранение…';
+            }, 200);
+            try {
+                const clip = await api('/api/dataset/record', { method: 'POST', json: { camera_id: camId, folder, seconds } });
+                UI.toast(`${clip.name}${clip.seconds ? ` · ${clip.seconds} с` : ''}`, { title: `Ролик добавлен: ${title}` });
+                selectedClass = folder;
+                loadSummary();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Ролик не записан' });
+            } finally {
+                clearInterval(timer);
+                progress.hidden = true;
+                bar.style.width = '0%';
+                badge.hidden = true;
+                select.disabled = false;
+                UI.setBusy(button, false);
+            }
+        });
+
+        /* ---------- Обучение ---------- */
+        const STATE_BADGES = {
+            running: '<span class="badge badge-info"><span class="spinner w-3 h-3 border-[1.5px]" aria-hidden="true"></span>Идёт</span>',
+            completed: '<span class="badge badge-success">Готово</span>',
+            failed: '<span class="badge badge-critical">Ошибка</span>',
+        };
+
+        function metricsTable(status) {
+            const metrics = status.metrics;
+            const windows = status.windows || {};
+            const titles = Object.fromEntries((summary?.classes || []).map((c) => [c.folder, c.title]));
+            const folders = Object.keys(windows).length ? Object.keys(windows) : Object.keys(metrics?.classes || {});
+            if (!folders.length) return '';
+            const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
+            return `<div class="table-wrap rounded-lg border border-line"><table class="table text-xs">
+                <thead><tr><th scope="col">Класс</th><th scope="col" class="cell-num">Окон</th><th scope="col" class="cell-num">Точность</th><th scope="col" class="cell-num">Полнота</th></tr></thead>
+                <tbody>${folders.map((folder) => {
+                    const m = metrics?.classes?.[folder];
+                    const count = windows[folder] ?? '—';
+                    return `<tr><td class="text-fg">${escapeHtml(titles[folder] || folder)}</td><td class="cell-num">${count}</td><td class="cell-num">${pct(m?.precision)}</td><td class="cell-num">${pct(m?.recall)}</td></tr>`;
+                }).join('')}</tbody></table></div>
+                <p class="hint mt-1.5">${metrics ? `Точность и полнота — на отложенных роликах, которых модель не видела${metrics.accuracy != null ? `; общая доля верных ответов ${pct(metrics.accuracy)}` : ''}. Класс без окон модель распознавать не умеет.` : 'Проверки на отложенных роликах не было: для неё нужно хотя бы по 2 ролика в классе.'}</p>`;
+        }
+
+        async function loadTraining() {
+            let status;
+            try {
+                status = await api('/api/dataset/training');
+            } catch (error) {
+                document.getElementById('train-status').innerHTML = `<div class="alert alert-danger">${icon('alert-circle')}<p>${escapeHtml(error.message)}</p></div>`;
+                return;
+            }
+            const running = status.state === 'running';
+            document.getElementById('train-state').innerHTML = STATE_BADGES[status.state] || '';
+            const button = document.getElementById('btn-train-ai');
+            if (button.getAttribute('aria-busy') !== 'true') button.disabled = running;
+            let html = '';
+            if (running) {
+                const p = status.progress;
+                const pct = p && p.total ? Math.round((p.done / p.total) * 100) : null;
+                html = `<div class="alert alert-info"><span class="spinner text-info-fg" aria-hidden="true"></span><div class="flex-1 min-w-0"><div class="alert-title">${escapeHtml(status.step_title || 'Подготовка')}</div>
+                    <p class="text-muted">Запущено ${escapeHtml(fmt.relative(status.started_at))}.${pct != null ? ` Обработано ${p.done} из ${p.total} ${plural(p.total, ['ролика', 'роликов', 'роликов'])}.` : ' Извлечение поз может идти десятки минут.'}</p>
+                    ${pct != null ? `<div class="progress mt-2" role="progressbar" aria-label="Извлечение поз" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div class="progress-bar" data-active="true" style="width:${pct}%"></div></div>` : ''}</div></div>`;
+            } else if (status.state === 'completed') {
+                html = `<div class="alert alert-success">${icon('check-circle')}<div><div class="alert-title">Модель обновлена ${escapeHtml(fmt.dateTime(status.finished_at))}</div><p class="text-muted">Камеры уже работают с новой моделью.</p></div></div>`;
+            } else if (status.state === 'failed') {
+                html = `<div class="alert alert-danger">${icon('alert-circle')}<div><div class="alert-title">Обучение не удалось</div><p class="text-muted break-words">${escapeHtml(status.error || '')}</p></div></div>`;
+            }
+            document.getElementById('train-status').innerHTML = html + (status.state !== 'idle' ? metricsTable(status) : '');
+            const log = status.log || [];
+            document.getElementById('train-log-box').hidden = !log.length;
+            document.getElementById('train-log').textContent = log.join('\n');
+            clearTimeout(trainPoll);
+            if (running) trainPoll = setTimeout(loadTraining, 5000);
+        }
+
+        document.getElementById('btn-train-ai').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            const fights = summary?.classes.find((c) => c.folder === '1_fight')?.clips || 0;
+            const ok = await UI.confirm({
+                title: 'Запустить дообучение?',
+                message: `Будут использованы все ролики датасета (драк: ${fights}). Извлечение поз нагрузит процессор, детекция на камерах может замедлиться.`,
+                confirmText: 'Запустить', danger: false, icon: 'sparkles',
+            });
+            if (!ok) return;
+            UI.setBusy(button, true, 'Отправка…');
+            try {
+                await api('/api/settings/trigger-training', { method: 'POST' });
+                UI.toast('Worker начнёт обучение в течение 10 секунд', { title: 'Дообучение запущено' });
+                setTimeout(loadTraining, 11000);
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось запустить обучение' });
+            } finally {
+                UI.setBusy(button, false);
+                button.disabled = true;
+                setTimeout(() => { button.disabled = false; loadTraining(); }, 12000);
+            }
+        });
+
+        /* ---------- Снимки кадров (как раньше) ---------- */
+        let sessionId = null;
+        let frames = 0;
+        let framesTimer = null;
+
+        function feedback(type, text) {
+            const icons = { success: 'check-circle', danger: 'alert-circle', info: 'info' };
+            document.getElementById('capture-feedback').innerHTML = `<div class="alert alert-${type}">${type === 'info' ? '<span class="spinner text-info-fg" aria-hidden="true"></span>' : icon(icons[type])}<div class="min-w-0 break-words">${text}</div></div>`;
+        }
 
         const newSession = () => Math.random().toString(36).slice(2, 15);
 
@@ -143,20 +438,19 @@
                 const data = await api(`/api/cameras/${encodeURIComponent(camId)}/snapshot`, { method: 'POST', json: { session_id: sessionId } });
                 if (data.status === 'success') {
                     frames += 1;
-                    feedback('capture-feedback', 'success', `Кадров в буфере: <b>${frames}</b>. Последний: <span class="mono">${escapeHtml(data.filepath.split('/').pop())}</span>`);
+                    feedback('success', `Кадров в буфере: <b>${frames}</b>. Последний: <span class="mono">${escapeHtml(data.filepath.split('/').pop())}</span>`);
                 } else {
                     const last = data.details ? data.details.trim().split('\n').pop() : '';
-                    feedback('capture-feedback', 'danger', `${escapeHtml(data.error === 'Timeout capturing snapshot' ? 'Камера не ответила за 10 секунд' : data.error)}${last ? `<div class="mono text-xs mt-1 text-muted">${escapeHtml(last)}</div>` : ''}`);
+                    feedback('danger', `${escapeHtml(data.error === 'Timeout capturing snapshot' ? 'Камера не ответила за 10 секунд' : data.error)}${last ? `<div class="mono text-xs mt-1 text-muted">${escapeHtml(last)}</div>` : ''}`);
                 }
             } catch (error) {
-                feedback('capture-feedback', 'danger', escapeHtml(error.message));
+                feedback('danger', escapeHtml(error.message));
             }
         }
 
         function showSave() {
-            document.getElementById('frames-count').textContent = `${frames} ${UI.plural(frames, ['кадр', 'кадра', 'кадров'])}`;
-            document.getElementById('step-save').hidden = frames === 0;
-            if (frames) document.getElementById('dataset-folder').focus();
+            document.getElementById('frames-count').textContent = `${frames} ${plural(frames, ['кадр', 'кадра', 'кадров'])}`;
+            document.getElementById('save-form').hidden = frames === 0;
         }
 
         document.getElementById('btn-capture').addEventListener('click', async (event) => {
@@ -168,36 +462,33 @@
             showSave();
         });
 
-        function stopRecording() {
-            clearInterval(recordTimer);
-            recordTimer = null;
+        function stopFrameSeries() {
+            clearInterval(framesTimer);
+            framesTimer = null;
             const button = document.getElementById('btn-record');
-            button.className = 'btn btn-danger';
-            button.innerHTML = `${icon('record', 'icon-sm')}Начать запись`;
+            button.innerHTML = `${icon('record', 'icon-sm')}Серия кадров`;
             document.getElementById('btn-capture').disabled = !camId;
             select.disabled = false;
             showSave();
         }
 
         document.getElementById('btn-record').addEventListener('click', () => {
-            if (recordTimer) { stopRecording(); return; }
+            if (framesTimer) { stopFrameSeries(); return; }
             const seconds = Math.min(10, Math.max(1, parseInt(document.getElementById('capture-interval').value, 10) || 1));
             if (!sessionId) { sessionId = newSession(); frames = 0; }
-            const button = document.getElementById('btn-record');
-            button.className = 'btn btn-secondary';
-            button.innerHTML = `<span class="dot dot-live text-red-500"></span>Остановить запись`;
+            document.getElementById('btn-record').innerHTML = `<span class="dot dot-live text-red-500"></span>Остановить серию`;
             document.getElementById('btn-capture').disabled = true;
             select.disabled = true;
-            document.getElementById('step-save').hidden = true;
-            feedback('capture-feedback', 'info', `Запись: кадр каждые ${seconds} с…`);
+            document.getElementById('save-form').hidden = true;
+            feedback('info', `Снимок каждые ${seconds} с…`);
             captureFrame();
-            recordTimer = setInterval(captureFrame, seconds * 1000);
+            framesTimer = setInterval(captureFrame, seconds * 1000);
         });
 
         document.getElementById('btn-discard').addEventListener('click', () => {
             sessionId = null;
             frames = 0;
-            document.getElementById('step-save').hidden = true;
+            document.getElementById('save-form').hidden = true;
             document.getElementById('capture-feedback').innerHTML = '';
             UI.toast('Кадры из буфера не будут сохранены', { type: 'info' });
         });
@@ -209,7 +500,7 @@
             if (!folder) {
                 input.setAttribute('aria-invalid', 'true');
                 input.focus();
-                UI.toast('Укажите папку класса датасета', { type: 'error' });
+                UI.toast('Укажите папку датасета', { type: 'error' });
                 return;
             }
             input.removeAttribute('aria-invalid');
@@ -218,11 +509,12 @@
             try {
                 const data = await api(`/api/cameras/${encodeURIComponent(camId)}/save-session`, { method: 'POST', json: { session_id: sessionId, dataset_folder: folder } });
                 if (data.status !== 'success') throw new Error(data.error);
-                UI.toast(`${data.moved_files} ${UI.plural(data.moved_files, ['файл', 'файла', 'файлов'])} → ${data.final_folder}`, { title: 'Кадры сохранены в датасет' });
+                UI.toast(`${data.moved_files} ${plural(data.moved_files, ['файл', 'файла', 'файлов'])} → ${data.final_folder}`, { title: 'Кадры сохранены' });
                 sessionId = null;
                 frames = 0;
-                document.getElementById('step-save').hidden = true;
+                document.getElementById('save-form').hidden = true;
                 document.getElementById('capture-feedback').innerHTML = '';
+                loadSummary();
             } catch (error) {
                 UI.toast(error.message, { type: 'error', title: 'Не удалось сохранить кадры' });
             } finally {
@@ -230,22 +522,8 @@
             }
         });
 
-        document.getElementById('btn-train-ai').addEventListener('click', async (event) => {
-            const button = event.currentTarget;
-            const ok = await UI.confirm({ title: 'Запустить дообучение?', message: 'Сервер извлечёт позы и переобучит модель действий. Это займёт время и нагрузит процессор, детекция на камерах может замедлиться.', confirmText: 'Запустить', danger: false, icon: 'sparkles' });
-            if (!ok) return;
-            UI.setBusy(button, true, 'Отправка…');
-            try {
-                const data = await api('/api/settings/trigger-training', { method: 'POST' });
-                feedback('train-feedback', 'success', escapeHtml(data.message || 'Обучение запущено'));
-            } catch (error) {
-                feedback('train-feedback', 'danger', escapeHtml(error.message));
-            } finally {
-                setTimeout(() => UI.setBusy(button, false), 3000);
-            }
-        });
-
         loadCameras();
+        loadSummary().then(loadTraining);
     })();
 </script>
 {% endblock %}
