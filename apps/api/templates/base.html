@@ -1,44 +1,129 @@
+{% from "_ui.html" import icon %}
+{%- set path = request.url.path -%}
+{%- set nav = [
+    ("Мониторинг", [
+        ("/", "Дашборд", "dashboard", ["/"]),
+        ("/cameras", "Камеры", "video", ["/cameras"]),
+        ("/events-page", "События", "bell", ["/events-page"]),
+    ]),
+    ("Аналитика", [
+        ("/detection-test", "Проверка детекций", "flask", ["/detection-test"]),
+        ("/visitors", "Посетители", "scan-face", ["/visitors"]),
+        ("/reports", "Отчёты", "chart", ["/reports"]),
+    ]),
+    ("Транспорт", [
+        ("/buses", "Автобусы", "bus", ["/buses"]),
+        ("/reports/passengers", "Пассажиропоток", "chart-line", ["/reports/passengers"]),
+    ]),
+    ("Настройка", [
+        ("/nvr", "NVR и импорт", "network", ["/nvr"]),
+        ("/ai", "AI и обучение", "cpu", ["/ai", "/finetune"]),
+        ("/integrations/webhooks", "Интеграции", "plug", ["/integrations"]),
+        ("/settings", "Настройки", "settings", ["/settings"]),
+    ]),
+] -%}
+{%- set ns = namespace(section="", label="") -%}
+{%- for section, items in nav -%}
+    {%- for href, label, _icon, matches in items -%}
+        {%- for m in matches -%}
+            {%- if path == m or (m != "/" and path.startswith(m ~ "/") and not (m == "/reports" and path.startswith("/reports/passengers"))) -%}
+                {%- set ns.section = section -%}{%- set ns.label = label -%}
+            {%- endif -%}
+        {%- endfor -%}
+    {%- endfor -%}
+{%- endfor -%}
 <!DOCTYPE html>
-<html lang="en" class="bg-gray-900 text-gray-100">
+<html lang="ru" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Laptop AI Box{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="dark light">
+    <title>{% block title %}AI Box{% endblock %} · AI Box</title>
+    <script>
+        // Тема до первой отрисовки, чтобы не мигал светлый фон. По умолчанию тёмная.
+        (function () {
+            try {
+                if (localStorage.getItem('ui.theme') === 'light') document.documentElement.dataset.theme = 'light';
+            } catch (e) { /* хранилище недоступно */ }
+        })();
+    </script>
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link href="/static/styles.css" rel="stylesheet">
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <!-- HLS.js for viewing video feeds -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20261027">
+    {% block head %}{% endblock %}
 </head>
-<body class="flex flex-col min-h-screen">
-    <nav class="bg-gray-800 p-4 shadow-md flex items-center justify-between">
-        <div class="text-xl font-bold flex items-center gap-2">
-            <i class="fas fa-box-open text-blue-500"></i>
-            <a href="/">Laptop AI Box 
-               <span class="text-xs text-gray-400 font-normal ml-2">Hikvision-First MVP</span>
+<body>
+    <a href="#main" class="skip-link sr-only-focusable">Перейти к содержимому</a>
+
+    <aside id="app-sidebar" class="app-sidebar" data-open="false" aria-label="Основное меню">
+        <div class="flex items-center gap-3 h-[var(--topbar-h)] px-4 border-b border-line shrink-0">
+            <a href="/" class="flex items-center gap-3 min-w-0 rounded-md">
+                <span class="brand-mark">{{ icon("logo", "icon-lg") }}</span>
+                <span class="min-w-0">
+                    <span class="block font-semibold text-fg leading-tight">AI Box</span>
+                    <span class="block text-xs text-subtle leading-tight">Видеоаналитика</span>
+                </span>
             </a>
+            <button type="button" class="btn btn-ghost btn-icon ml-auto lg:hidden" data-sidebar-close aria-label="Закрыть меню">{{ icon("x") }}</button>
         </div>
-        <div class="flex gap-4">
-            <a href="/" class="hover:text-blue-400"><i class="fas fa-tachometer-alt"></i> Главная</a>
-            <a href="/buses" class="hover:text-blue-400"><i class="fas fa-bus"></i> Автобусы</a>
-            <a href="/nvr" class="hover:text-blue-400"><i class="fas fa-network-wired"></i> Настройка NVR</a>
-            <a href="/cameras" class="hover:text-blue-400"><i class="fas fa-video"></i> Камеры</a>
-            <a href="/ai" class="hover:text-blue-400"><i class="fas fa-brain"></i> ИИ Операции</a>
-            <a href="/detection-test" class="hover:text-blue-400"><i class="fas fa-flask"></i> Проверка детекций</a>
-            <a href="/finetune" class="hover:text-blue-400"><i class="fas fa-graduation-cap"></i> Обучение</a>
-            <a href="/visitors" class="hover:text-blue-400"><i class="fas fa-users"></i> Посетители</a>
-            <a href="/events-page" class="hover:text-blue-400"><i class="fas fa-bell"></i> События</a>
-            <a href="/reports/passengers" class="hover:text-blue-400"><i class="fas fa-chart-bar"></i> Отчеты</a>
-            <a href="/integrations/webhooks" class="hover:text-blue-400"><i class="fas fa-link"></i> Вебхуки</a>
-            <a href="/settings" class="hover:text-blue-400"><i class="fas fa-cog"></i> Настройки</a>
+        <nav class="flex-1 overflow-y-auto px-3 pb-6" aria-label="Разделы">
+            {% for section, items in nav %}
+            <div class="nav-section" id="nav-{{ loop.index }}">{{ section }}</div>
+            <ul class="space-y-0.5" aria-labelledby="nav-{{ loop.index }}">
+                {% for href, label, item_icon, matches in items %}
+                <li>
+                    <a href="{{ href }}" class="nav-link" {% if ns.label == label %}aria-current="page"{% endif %}>
+                        {{ icon(item_icon) }}<span>{{ label }}</span>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endfor %}
+        </nav>
+        <div class="px-4 py-3 border-t border-line text-xs text-subtle flex items-center justify-between gap-2 shrink-0">
+            <span>Camera Detector · локальный сервер</span>
         </div>
-    </nav>
-    <main class="flex-grow p-6">
-        {% block content %}{% endblock %}
-    </main>
-    <footer class="bg-gray-800 text-center p-4 text-sm text-gray-500">
-        &copy; 2026 AI Box Edge System.
-    </footer>
+    </aside>
+    <div id="app-scrim" class="app-scrim" hidden></div>
+
+    <div class="app-main">
+        <header class="app-topbar">
+            <button type="button" class="btn btn-ghost btn-icon lg:hidden -ml-2" data-sidebar-open aria-controls="app-sidebar" aria-expanded="false" aria-label="Открыть меню">{{ icon("menu") }}</button>
+            <div class="flex items-center gap-2 min-w-0 text-sm">
+                {% if ns.section %}<span class="text-subtle hidden sm:inline">{{ ns.section }}</span>{{ icon("chevron-right", "icon-xs text-subtle hidden sm:inline") }}{% endif %}
+                <span class="font-semibold text-fg truncate">{{ ns.label or self.title() }}</span>
+            </div>
+            <div class="ml-auto flex items-center gap-2">
+                <span id="topbar-status" class="badge badge-system hidden sm:inline-flex"><span class="dot"></span>Проверка связи…</span>
+                <span id="topbar-clock" class="hidden md:inline text-sm font-semibold text-muted num" aria-label="Текущее время"></span>
+                <button type="button" class="btn btn-ghost btn-icon" data-theme-toggle aria-label="Переключить тему">{{ icon("sun") }}</button>
+            </div>
+        </header>
+
+        <main id="main" class="app-content" tabindex="-1">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <div id="toast-region" class="toast-region" aria-live="polite"></div>
+
+    <dialog id="confirm-dialog" class="modal" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+        <form method="dialog" class="contents">
+            <div class="modal-header justify-start">
+                <div data-confirm-icon class="modal-icon bg-critical-soft text-critical-fg">{{ icon("alert-triangle") }}</div>
+                <div class="min-w-0 pt-1">
+                    <h2 id="confirm-title" class="modal-title" data-confirm-title>Подтвердите действие</h2>
+                    <p id="confirm-message" class="mt-1.5 text-sm text-muted" data-confirm-message></p>
+                </div>
+            </div>
+            <div class="modal-footer mt-3">
+                <button type="submit" value="cancel" class="btn btn-secondary" data-confirm-cancel>Отмена</button>
+                <button type="submit" value="confirm" class="btn btn-danger" data-confirm-ok>Подтвердить</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="/static/js/detector-catalog.js?v=20261027"></script>
+    <script src="/static/js/app.js?v=20261027"></script>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

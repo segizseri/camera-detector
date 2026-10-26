@@ -1,105 +1,230 @@
 {% extends "base.html" %}
-{% block title %}Главная | Laptop AI Box{% endblock %}
+{% from "_ui.html" import icon, page_header, skeleton_rows %}
+{% block title %}Дашборд{% endblock %}
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Сводка панели управления</h1>
+{% call page_header("Дашборд", "Состояние камер, инциденты и нагрузка сервера в реальном времени.") %}
+    <span class="text-xs text-subtle" id="updated-at" aria-live="polite"></span>
+    <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh">{{ icon("refresh", "icon-sm") }}Обновить</button>
+{% endcall %}
 
-<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-    <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-green-500 shadow-lg">
-        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Камеры онлайн</h2>
-        <div class="text-4xl font-bold mt-2" id="online-count">-</div>
-    </div>
+<section aria-label="Сводка" class="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
+    <a href="/cameras" class="card card-interactive kpi">
+        <div class="kpi-label">Камеры онлайн <span class="kpi-icon">{{ icon("video", "icon-sm") }}</span></div>
+        <div class="kpi-value" id="kpi-online"><span class="skeleton h-8 w-20 inline-block"></span></div>
+        <div class="kpi-meta" id="kpi-online-meta">&nbsp;</div>
+    </a>
+    <a href="/events-page" class="card card-interactive kpi">
+        <div class="kpi-label">Инциденты за 24 ч <span class="kpi-icon">{{ icon("bell", "icon-sm") }}</span></div>
+        <div class="kpi-value" id="kpi-incidents"><span class="skeleton h-8 w-14 inline-block"></span></div>
+        <div class="kpi-meta" id="kpi-incidents-meta">&nbsp;</div>
+    </a>
+    <a href="/ai" class="card card-interactive kpi">
+        <div class="kpi-label">AI-аналитика <span class="kpi-icon">{{ icon("cpu", "icon-sm") }}</span></div>
+        <div class="kpi-value" id="kpi-ai"><span class="skeleton h-8 w-14 inline-block"></span></div>
+        <div class="kpi-meta" id="kpi-ai-meta">&nbsp;</div>
+    </a>
+    <a href="/settings" class="card card-interactive kpi">
+        <div class="kpi-label">Сервер <span class="kpi-icon">{{ icon("server", "icon-sm") }}</span></div>
+        <div class="kpi-value" id="kpi-load"><span class="skeleton h-8 w-16 inline-block"></span></div>
+        <div class="kpi-meta" id="kpi-load-meta">&nbsp;</div>
+    </a>
+</section>
 
-    <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-red-500 shadow-lg">
-        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Камеры оффлайн</h2>
-        <div class="text-4xl font-bold mt-2" id="offline-count">-</div>
-    </div>
-
-    <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-yellow-500 shadow-lg">
-        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">События (24ч)</h2>
-        <div class="text-4xl font-bold mt-2" id="events-count">-</div>
-    </div>
-
-    <div class="bg-gray-800 p-6 rounded-lg border-l-4 border-blue-500 shadow-lg">
-        <h2 class="text-gray-400 text-sm uppercase font-bold tracking-wider">Нагрузка системы</h2>
-        <div class="text-xl font-bold mt-2" id="sys-load">CPU: <span class="text-green-400">Низкая</span></div>
-    </div>
-</div>
-
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-    <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
-        <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i class="fas fa-bus text-blue-500"></i> Пассажиропоток (Сегодня)</h2>
-        <div id="passenger-summary" class="space-y-3">
-            <div class="text-gray-500 italic text-sm">Загрузка данных...</div>
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mt-4">
+    <section class="card xl:col-span-2 flex flex-col" aria-labelledby="recent-title">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title" id="recent-title">{{ icon("bell", "icon-sm text-subtle") }}Последние события</h2>
+                <p class="card-subtitle">Нажмите на событие, чтобы открыть снимок и клип</p>
+            </div>
+            <a href="/events-page" class="btn btn-ghost btn-sm">Все события{{ icon("arrow-right", "icon-sm") }}</a>
         </div>
-    </div>
-    
-    <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
-        <h2 class="text-xl font-bold mb-4">Последние уведомления</h2>
-        <div id="recent-alerts" class="text-gray-400 italic">Нет недавних уведомлений.</div>
-    </div>
+        <div id="recent-events" class="flex-1">{{ skeleton_rows(6) }}</div>
+    </section>
+
+    <section class="card flex flex-col" aria-labelledby="cams-title">
+        <div class="card-header">
+            <h2 class="card-title" id="cams-title">{{ icon("video", "icon-sm text-subtle") }}Камеры</h2>
+            <a href="/cameras" class="btn btn-ghost btn-sm">Все камеры{{ icon("arrow-right", "icon-sm") }}</a>
+        </div>
+        <div id="camera-list" class="flex-1"><ul class="divide-y divide-line">
+            {% for _ in range(4) %}
+            <li class="flex items-center gap-3 px-5 py-3" aria-hidden="true">
+                <span class="skeleton h-2.5 w-2.5 rounded-full"></span>
+                <span class="flex-1 space-y-1.5"><span class="skeleton skeleton-text w-1/2"></span><span class="skeleton skeleton-text w-1/3"></span></span>
+            </li>
+            {% endfor %}
+        </ul></div>
+    </section>
 </div>
 
+<section id="transport-card" class="card mt-4" aria-labelledby="transport-title" hidden>
+    <div class="card-header">
+        <div>
+            <p class="section-title">Транспорт</p>
+            <h2 class="card-title mt-1" id="transport-title">{{ icon("bus", "icon-sm text-subtle") }}Пассажиропоток сегодня</h2>
+        </div>
+        <a href="/reports/passengers" class="btn btn-ghost btn-sm">Отчёт{{ icon("arrow-right", "icon-sm") }}</a>
+    </div>
+    <div id="transport-body" class="card-body grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
 <script>
-    // Fetch dashboard stats dynamically
-    async function fetchStats() {
-        const cams = await fetch('/api/cameras').then(r => r.json());
-        const online = cams.filter(c => c.status === 'online').length;
-        document.getElementById('online-count').innerText = online;
-        document.getElementById('offline-count').innerText = cams.length - online;
+    (function () {
+        const { api, escapeHtml, icon, fmt, plural, eventMeta, eventBadge, cameraStatus, activeDetectors, snapshotUrl } = UI;
+        let cameraById = new Map();
+        let recent = [];
+        let lastSignature = '';
 
-        const evts = await fetch('/api/events').then(r => r.json());
-        document.getElementById('events-count').innerText = evts.length;
+        const cameraName = (id) => cameraById.get(id)?.name || id;
 
-        // Fetch passenger stats
-        const passStats = await fetch('/api/stats/passengers').then(r => r.json());
-        if (passStats.length > 0) {
-            document.getElementById('passenger-summary').innerHTML = passStats.map(s => `
-                <div class="flex justify-between items-center bg-gray-900/50 p-3 rounded border border-gray-700">
-                    <div>
-                        <span class="text-xs text-gray-500 block uppercase">Камера: ${s.camera_id}</span>
-                        <span class="font-bold text-gray-300">${s.door_label}</span>
-                    </div>
-                    <div class="flex gap-4">
-                        <div class="text-center">
-                            <span class="text-[10px] text-green-500 block">ВОШЛО</span>
-                            <span class="text-xl font-bold text-green-400">${s.count_in}</span>
-                        </div>
-                        <div class="text-center">
-                            <span class="text-[10px] text-red-500 block">ВЫШЛО</span>
-                            <span class="text-xl font-bold text-red-400">${s.count_out}</span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        } else {
-            document.getElementById('passenger-summary').innerHTML = '<div class="text-gray-600 italic text-sm text-center py-4">Сегодня пассажиров еще не зафиксировано.</div>';
+        function renderKpis(cams, events, metrics) {
+            const online = cams.filter((c) => c.status === 'online').length;
+            const problems = cams.filter((c) => c.status === 'error').length;
+            document.getElementById('kpi-online').innerHTML = `${online}<span class="text-muted text-xl font-medium"> / ${cams.length}</span>`;
+            document.getElementById('kpi-online-meta').textContent = cams.length
+                ? `${cams.length - online} не в сети${problems ? ` · ${problems} с ошибкой` : ''}`
+                : 'Камеры ещё не добавлены';
+
+            const dayAgo = Date.now() - 24 * 3600 * 1000;
+            const incidents = events.filter((e) => eventMeta(e.event_type).group === 'detector' && (UI.parseDate(e.timestamp)?.getTime() || 0) >= dayAgo);
+            const critical = incidents.filter((e) => eventMeta(e.event_type).severity === 'critical').length;
+            const capped = events.length >= 100 && incidents.length === events.length;
+            document.getElementById('kpi-incidents').textContent = capped ? '100+' : String(incidents.length);
+            document.getElementById('kpi-incidents-meta').textContent = incidents.length
+                ? `${critical} ${plural(critical, ['критичный', 'критичных', 'критичных'])}`
+                : 'Спокойно: инцидентов нет';
+
+            const aiCams = cams.filter((c) => c.enabled && c.ai_enabled);
+            const detectorCount = aiCams.reduce((sum, c) => sum + activeDetectors(c).length, 0);
+            document.getElementById('kpi-ai').innerHTML = `${aiCams.length}<span class="text-muted text-xl font-medium"> ${plural(aiCams.length, ['камера', 'камеры', 'камер'])}</span>`;
+            document.getElementById('kpi-ai-meta').textContent = aiCams.length
+                ? `${detectorCount} ${plural(detectorCount, ['детектор включён', 'детектора включено', 'детекторов включено'])}`
+                : 'AI выключен на всех камерах';
+
+            if (metrics) {
+                const load = metrics.load_average ? metrics.load_average[0] : null;
+                document.getElementById('kpi-load').textContent = load != null ? load.toFixed(2).replace('.', ',') : '—';
+                const disk = metrics.disk ? `диск занят на ${Math.round(metrics.disk.used_percent)}%` : '';
+                const hls = metrics.hls ? `${metrics.hls.active_processes} ${plural(metrics.hls.active_processes, ['поток', 'потока', 'потоков'])} HLS` : '';
+                document.getElementById('kpi-load-meta').textContent = ['нагрузка за 1 мин', disk, hls].filter(Boolean).join(' · ');
+            } else {
+                document.getElementById('kpi-load').textContent = '—';
+                document.getElementById('kpi-load-meta').textContent = 'Метрики недоступны';
+            }
         }
 
-        const eventMapping = {
-            'person_detected': 'Обнаружен человек',
-            'fight_suspected': 'Подозрение на драку',
-            'theft_suspected': 'Подозрение на кражу',
-            'shoplifting_suspected': 'Кража из витрины',
-            'camera_offline': 'Камера отключена'
-        };
-
-        if (evts.length > 0) {
-            document.getElementById('recent-alerts').innerHTML = evts.slice(0, 5).map(e => {
-                const displayName = eventMapping[e.event_type] || e.event_type;
-                const camName = cams.find(c => c.id === e.camera_id)?.name || e.camera_id;
-                return `
-                <div class="border-b border-gray-700 py-2 flex justify-between items-center">
-                    <span>${displayName} на камере: ${camName}</span>
-                    <div class="flex items-center gap-3">
-                        <span class="text-xs text-gray-500">${new Date(e.timestamp).toLocaleString()}</span>
-                        ${e.snapshot_path ? `<a href="/media/snapshots/${e.snapshot_path}" target="_blank" class="text-blue-400 hover:text-blue-300"><i class="fas fa-image"></i></a>` : ''}
-                    </div>
-                </div>
-            `;}).join('');
+        function renderEvents(events) {
+            const box = document.getElementById('recent-events');
+            recent = events.slice(0, 8);
+            if (!recent.length) {
+                box.innerHTML = UI.emptyState({ iconName: 'check-circle', title: 'Событий пока нет', text: 'Когда детекторы что-то заметят, событие со снимком появится здесь.' });
+                return;
+            }
+            box.innerHTML = `<ul class="divide-y divide-line">${recent.map((e, index) => {
+                const meta = eventMeta(e.event_type);
+                const snap = snapshotUrl(e.snapshot_path);
+                return `<li>
+                    <button type="button" class="w-full text-left flex items-center gap-3 px-5 py-3 hover:bg-surface-2 focus-visible:bg-surface-2 transition-colors" data-event-index="${index}">
+                        <span class="relative w-20 aspect-video rounded-md overflow-hidden border border-line bg-surface-2 shrink-0 grid place-items-center text-subtle">
+                            ${snap ? `<img src="${snap}" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : icon(meta.icon)}
+                        </span>
+                        <span class="min-w-0 flex-1">
+                            <span class="flex flex-wrap items-center gap-2">${eventBadge(e.event_type, { size: 'badge-sm' })}${UI.eventIsTest(e) ? '<span class="badge badge-sm badge-outline">Тест</span>' : ''}</span>
+                            <span class="block mt-1 text-sm font-medium text-fg truncate">${escapeHtml(cameraName(e.camera_id))}</span>
+                        </span>
+                        <span class="text-right shrink-0">
+                            <span class="block text-sm text-muted" title="${escapeHtml(fmt.full(e.timestamp))}">${escapeHtml(fmt.relative(e.timestamp))}</span>
+                            ${e.confidence != null ? `<span class="block text-xs text-subtle num">${fmt.percent(e.confidence)}</span>` : ''}
+                        </span>
+                    </button>
+                </li>`;
+            }).join('')}</ul>`;
         }
-    }
 
-    fetchStats();
-    setInterval(fetchStats, 10000);
+        function renderCameras(cams) {
+            const list = document.getElementById('camera-list');
+            if (!cams.length) {
+                list.innerHTML = UI.emptyState({ iconName: 'video-off', title: 'Камер нет', text: 'Импортируйте каналы из NVR, чтобы начать мониторинг.', action: '<a href="/nvr" class="btn btn-primary btn-sm">Импорт из NVR</a>' });
+                return;
+            }
+            const order = { error: 0, offline: 1, online: 2 };
+            const sorted = [...cams].sort((a, b) => (order[a.status] ?? 1) - (order[b.status] ?? 1) || a.name.localeCompare(b.name, 'ru'));
+            list.innerHTML = '<ul class="divide-y divide-line">' + sorted.slice(0, 8).map((c) => {
+                const status = cameraStatus(c.status);
+                const dets = activeDetectors(c);
+                return `<li>
+                    <a href="/cameras/${encodeURIComponent(c.id)}" class="flex items-center gap-3 px-5 py-3 hover:bg-surface-2 transition-colors">
+                        <span class="dot ${status.dot} ${status.live ? 'dot-live' : ''}" aria-hidden="true"></span>
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-sm font-medium text-fg truncate">${escapeHtml(c.name)}</span>
+                            <span class="block text-xs text-subtle">${escapeHtml(status.label)}${c.last_seen ? ` · ${escapeHtml(fmt.relative(c.last_seen))}` : ''}</span>
+                        </span>
+                        <span class="flex items-center gap-1 text-subtle" aria-label="${c.ai_enabled ? `Детекторов включено: ${dets.length}` : 'AI выключен'}">
+                            ${c.ai_enabled ? dets.slice(0, 4).map((d) => `<span title="${escapeHtml(d.title)}">${icon(d.icon, 'icon-sm')}</span>`).join('') : '<span class="text-xs">AI выкл.</span>'}
+                        </span>
+                    </a>
+                </li>`;
+            }).join('') + (sorted.length > 8 ? `<li class="px-5 py-2.5 text-xs text-subtle">и ещё ${sorted.length - 8}</li>` : '') + '</ul>';
+        }
+
+        function renderTransport(stats) {
+            const card = document.getElementById('transport-card');
+            if (!stats.length) { card.hidden = true; return; }
+            card.hidden = false;
+            document.getElementById('transport-body').innerHTML = stats.map((s) => `
+                <div class="rounded-lg border border-line bg-surface-2 p-3.5">
+                    <div class="text-xs text-subtle truncate">${escapeHtml(cameraName(s.camera_id))}</div>
+                    <div class="font-semibold text-fg">${escapeHtml(s.door_label || 'Дверь')}</div>
+                    <div class="mt-2 flex gap-5 num">
+                        <div><div class="text-xs text-subtle">Вошло</div><div class="text-xl font-semibold text-success-fg">${fmt.number(s.count_in)}</div></div>
+                        <div><div class="text-xs text-subtle">Вышло</div><div class="text-xl font-semibold text-high-fg">${fmt.number(s.count_out)}</div></div>
+                    </div>
+                </div>`).join('');
+        }
+
+        async function load() {
+            const [cams, events, metrics, passengers] = await Promise.all([
+                UI.cameras({ refresh: true }).catch(() => null),
+                api('/api/events/').catch(() => null),
+                api('/api/system/metrics').catch(() => null),
+                api('/api/stats/passengers').catch(() => []),
+            ]);
+            if (!cams || !events) {
+                const message = 'Сервер не ответил. Данные обновятся автоматически.';
+                if (!recent.length) document.getElementById('recent-events').innerHTML = UI.errorState(message);
+                UI.toast(message, { type: 'error', title: 'Не удалось обновить дашборд' });
+                return;
+            }
+            cameraById = new Map(cams.map((c) => [c.id, c]));
+            renderKpis(cams, events, metrics);
+            // Списки перерисовываем только при изменениях, чтобы не сбивать фокус клавиатуры.
+            const signature = JSON.stringify([events.slice(0, 8).map((e) => [e.id, e.snapshot_path]), cams.map((c) => [c.id, c.name, c.status, c.ai_enabled, c.last_seen, ...UI.detectors.map((d) => c[d.legacy_flag])]), passengers]);
+            if (signature !== lastSignature) {
+                lastSignature = signature;
+                renderEvents(events);
+                renderCameras(cams);
+                renderTransport(passengers || []);
+            }
+            document.getElementById('updated-at').textContent = `Обновлено в ${fmt.clock(new Date())}`;
+        }
+
+        document.getElementById('recent-events').addEventListener('click', (event) => {
+            const row = event.target.closest('[data-event-index]');
+            if (row) UI.openEvent(recent, Number(row.dataset.eventIndex), { cameraName });
+            if (event.target.closest('[data-retry]')) load();
+        });
+        document.getElementById('btn-refresh').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            UI.setBusy(button, true, 'Обновление');
+            await load();
+            UI.setBusy(button, false);
+        });
+
+        load();
+        UI.poll(load, 10000);
+    })();
 </script>
 {% endblock %}

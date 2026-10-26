@@ -1,238 +1,227 @@
 {% extends "base.html" %}
-
-{% block title %}Детали Посетителя{% endblock %}
-
+{% from "_ui.html" import icon %}
+{% block title %}Профиль посетителя{% endblock %}
 {% block content %}
-<div class="mb-6">
-    <a href="/visitors" class="text-blue-500 hover:text-blue-400 flex items-center gap-2 mb-4 transition font-medium">
-        <i class="fas fa-arrow-left"></i> Вернуться к списку
-    </a>
-    <h1 class="text-3xl font-bold" id="title-name">Детали Посетителя</h1>
-</div>
-
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-    <!-- Left Column: Details & Editing -->
-    <div class="lg:col-span-1 bg-gray-800 rounded-xl border border-gray-700 p-6 shadow-lg h-fit">
-        <div class="w-full h-64 bg-gray-900 rounded-lg overflow-hidden relative mb-6 border border-gray-700 shadow-inner">
-            <img id="detail-snapshot" src="/static/favicon.png" class="w-full h-full object-cover" alt="Face Snapshot">
-            <div id="badge-container" class="absolute bottom-3 left-3">
-                <!-- Status badge injected here -->
+<div id="visitor-page" data-visitor-id="{{ visitor_id }}">
+    <header class="page-header">
+        <div class="min-w-0">
+            <nav class="breadcrumbs" aria-label="Навигационная цепочка">
+                <a href="/visitors">Посетители</a>{{ icon("chevron-right", "icon-xs") }}<span aria-current="page" id="crumb-name">Профиль</span>
+            </nav>
+            <div class="flex flex-wrap items-center gap-3">
+                <h1 class="page-title" id="title-name"><span class="skeleton h-8 w-56 inline-block align-middle"></span></h1>
+                <span id="title-badge"></span>
             </div>
+            <p class="page-subtitle" id="title-meta">&nbsp;</p>
         </div>
-        
-        <form id="edit-form" onsubmit="saveVisitorDetails(event)" class="space-y-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-300 mb-1">Имя / Псевдоним</label>
-                <input type="text" id="visitor-name" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Например: Иван Иванов">
-            </div>
-            
-            <div>
-                <label class="block text-sm font-medium text-gray-300 mb-1">Заметки / Описание</label>
-                <textarea id="visitor-notes" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white h-28 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Особые приметы, частота визитов, предпочтения..."></textarea>
-            </div>
-            
-            <!-- Switches -->
-            <div class="space-y-3 pt-2">
-                <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded-lg border border-gray-750">
-                    <div class="flex items-center gap-2 text-red-400">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <span class="text-sm font-semibold">Отметить как нарушителя</span>
-                    </div>
-                    <button type="button" id="toggle-flagged" onclick="toggleFlaggedStatus()" 
-                            style="width: 2.75rem; height: 1.5rem; display: inline-flex; align-items: center; border-radius: 9999px; cursor: pointer; transition: background-color 0.2s; position: relative; border: none; outline: none; background-color: rgb(75, 85, 99);">
-                        <span id="dot-flagged" 
-                              style="width: 1.25rem; height: 1.25rem; border-radius: 9999px; background-color: white; position: absolute; left: 0.125rem; transition: transform 0.2s; transform: translateX(0);"></span>
-                    </button>
-                </div>
-                
-                <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded-lg border border-gray-750">
-                    <div class="flex items-center gap-2 text-blue-400">
-                        <i class="fas fa-user-tie"></i>
-                        <span class="text-sm font-semibold">Это сотрудник магазина</span>
-                    </div>
-                    <button type="button" id="toggle-employee" onclick="toggleEmployeeStatus()" 
-                            style="width: 2.75rem; height: 1.5rem; display: inline-flex; align-items: center; border-radius: 9999px; cursor: pointer; transition: background-color 0.2s; position: relative; border: none; outline: none; background-color: rgb(75, 85, 99);">
-                        <span id="dot-employee" 
-                              style="width: 1.25rem; height: 1.25rem; border-radius: 9999px; background-color: white; position: absolute; left: 0.125rem; transition: transform 0.2s; transform: translateX(0);"></span>
-                    </button>
-                </div>
-            </div>
-            
-            <div class="text-xs text-gray-500 space-y-1 pt-2 border-t border-gray-700">
-                <p>ID: <span class="font-mono text-gray-400" id="info-id"></span></p>
-                <p>Всего визитов: <span class="text-gray-400 font-semibold" id="info-visits"></span></p>
-                <p>Первый визит: <span class="text-gray-400" id="info-first"></span></p>
-                <p>Последний визит: <span class="text-gray-400" id="info-last"></span></p>
-            </div>
-            
-            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-lg shadow transition flex items-center justify-center gap-2 mt-4">
-                <i class="fas fa-save"></i> Сохранить настройки
+    </header>
+
+    <div id="visitor-layout" class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <section class="card overflow-hidden" aria-labelledby="profile-title">
+            <h2 class="sr-only" id="profile-title">Профиль</h2>
+            <button type="button" class="relative block w-full aspect-[4/3] bg-surface-2 overflow-hidden" id="photo-button" aria-label="Открыть фото крупно">
+                <span class="absolute inset-0 grid place-items-center text-subtle">{{ icon("user", "icon-xl") }}</span>
+                <img id="detail-snapshot" alt="" class="absolute inset-0 w-full h-full object-cover" hidden>
             </button>
-        </form>
-    </div>
-    
-    <!-- Right Column: Visit History -->
-    <div class="lg:col-span-2 bg-gray-800 rounded-xl border border-gray-700 p-6 shadow-lg flex flex-col">
-        <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <i class="fas fa-history text-blue-500"></i> История фиксаций (последние 100)
-        </h2>
-        
-        <div class="flex-grow overflow-y-auto max-h-[600px] pr-2 space-y-4" id="history-timeline">
-            <div class="text-center text-gray-500 py-10">Загрузка истории...</div>
-        </div>
+            <form id="edit-form" class="card-body space-y-4" novalidate>
+                <div class="field">
+                    <label class="label" for="visitor-name">Имя или пометка</label>
+                    <input type="text" id="visitor-name" class="input" placeholder="Например: Иван Иванов" maxlength="120" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="label" for="visitor-notes">Заметки</label>
+                    <textarea id="visitor-notes" class="textarea" placeholder="Приметы, частота визитов, договорённости…"></textarea>
+                </div>
+                <div class="rounded-lg border border-line px-3.5">
+                    <label class="setting-row cursor-pointer">
+                        <span class="setting-text">
+                            <span class="setting-title flex items-center gap-2">{{ icon("alert-triangle", "icon-sm text-critical-fg") }}Нарушитель</span>
+                            <span class="setting-desc block">Выделять в списке и в событиях</span>
+                        </span>
+                        <input type="checkbox" role="switch" class="switch switch-danger" id="toggle-flagged">
+                    </label>
+                    <label class="setting-row cursor-pointer">
+                        <span class="setting-text">
+                            <span class="setting-title flex items-center gap-2">{{ icon("user-check", "icon-sm text-info-fg") }}Сотрудник</span>
+                            <span class="setting-desc block">Не считать клиентом, не удалять при очистке</span>
+                        </span>
+                        <input type="checkbox" role="switch" class="switch" id="toggle-employee">
+                    </label>
+                </div>
+                <p class="hint">Нарушитель и сотрудник взаимоисключающие: включение одного выключает другое.</p>
+                <dl class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm pt-1">
+                    <dt class="text-subtle">Визитов</dt><dd class="text-fg font-semibold num text-right" id="info-visits">—</dd>
+                    <dt class="text-subtle">Первый визит</dt><dd class="text-fg text-right" id="info-first">—</dd>
+                    <dt class="text-subtle">Последний визит</dt><dd class="text-fg text-right" id="info-last">—</dd>
+                    <dt class="text-subtle">ID</dt><dd class="mono text-fg text-right truncate" id="info-id">—</dd>
+                </dl>
+                <div class="flex gap-2 pt-1">
+                    <button type="submit" class="btn btn-primary flex-1" id="btn-save">{{ icon("save", "icon-sm") }}Сохранить</button>
+                    <button type="button" class="btn btn-danger-soft btn-icon" id="btn-delete" aria-label="Удалить профиль">{{ icon("trash", "icon-sm") }}</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card lg:col-span-2" aria-labelledby="history-title">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title" id="history-title">{{ icon("history", "icon-sm text-subtle") }}История фиксаций</h2>
+                    <p class="card-subtitle">Последние 100 событий с этим человеком</p>
+                </div>
+                <span class="badge badge-outline num" id="history-count" hidden></span>
+            </div>
+            <div id="history-timeline" class="max-h-[70vh] overflow-y-auto">
+                {% for _ in range(4) %}
+                <div class="flex items-center gap-3 px-5 py-3.5" aria-hidden="true"><div class="skeleton h-12 w-20"></div><div class="flex-1 space-y-2"><div class="skeleton skeleton-text w-1/3"></div><div class="skeleton skeleton-text w-1/5"></div></div></div>
+                {% endfor %}
+            </div>
+        </section>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    const visitorId = "{{ visitor_id }}";
-    let isFlagged = false;
-    let isEmployee = false;
+    (function () {
+        const { api, escapeHtml, icon, fmt } = UI;
+        const visitorId = document.getElementById('visitor-page').dataset.visitorId;
+        const url = `/api/visitors/${encodeURIComponent(visitorId)}`;
+        const flagged = document.getElementById('toggle-flagged');
+        const employee = document.getElementById('toggle-employee');
+        let visitor = null;
+        let history = [];
 
-    function fetchVisitorData() {
-        fetch(`/api/visitors/${visitorId}`)
-            .then(res => {
-                if(!res.ok) throw new Error('Посетитель не найден');
-                return res.json();
-            })
-            .then(v => {
-                isFlagged = v.is_flagged;
-                isEmployee = v.is_employee;
-                
-                document.getElementById('title-name').textContent = v.name ? v.name : `Посетитель #${v.id.substring(0, 6)}`;
-                document.getElementById('visitor-name').value = v.name || '';
-                document.getElementById('visitor-notes').value = v.notes || '';
-                document.getElementById('info-id').textContent = v.id;
-                document.getElementById('info-visits').textContent = v.visit_count;
-                document.getElementById('info-first').textContent = new Date(v.first_seen).toLocaleString('ru-RU');
-                document.getElementById('info-last').textContent = new Date(v.last_seen).toLocaleString('ru-RU');
-                
-                const img = document.getElementById('detail-snapshot');
-                img.src = v.face_snapshot ? `/media/snapshots/${v.face_snapshot}` : '/static/favicon.png';
-                
-                updateBadgesAndToggles();
-            })
-            .catch(err => {
-                alert(err.message);
-                window.location.href = '/visitors';
-            });
-    }
-
-    function updateBadgesAndToggles() {
-        const badgeBox = document.getElementById('badge-container');
-        if (isEmployee) {
-            badgeBox.innerHTML = '<span class="text-xs bg-blue-900 text-blue-200 px-3 py-1 rounded-full shadow border border-blue-500"><i class="fas fa-user-tie"></i> Сотрудник</span>';
-        } else if (isFlagged) {
-            badgeBox.innerHTML = '<span class="text-xs bg-red-900 text-red-200 px-3 py-1 rounded-full shadow border border-red-500"><i class="fas fa-exclamation-triangle"></i> Нарушитель</span>';
-        } else {
-            badgeBox.innerHTML = '<span class="text-xs bg-green-900 text-green-200 px-3 py-1 rounded-full shadow border border-green-500">Обычный клиент</span>';
+        function badge() {
+            if (employee.checked) return `<span class="badge badge-info badge-lg">${icon('user-check', 'icon-xs')}Сотрудник</span>`;
+            if (flagged.checked) return `<span class="badge badge-critical badge-lg">${icon('alert-triangle', 'icon-xs')}Нарушитель</span>`;
+            return '<span class="badge badge-system badge-lg">Посетитель</span>';
         }
 
-        // Toggle Flagged Switch
-        const btnFlagged = document.getElementById('toggle-flagged');
-        const dotFlagged = document.getElementById('dot-flagged');
-        if (isFlagged) {
-            btnFlagged.style.backgroundColor = 'rgb(220, 38, 38)'; // red-600
-            dotFlagged.style.transform = 'translateX(1.25rem)';
-        } else {
-            btnFlagged.style.backgroundColor = 'rgb(75, 85, 99)'; // gray-600
-            dotFlagged.style.transform = 'translateX(0)';
+        function render() {
+            const name = visitor.name || `Посетитель #${visitor.id.slice(0, 6)}`;
+            document.title = `${name} · AI Box`;
+            document.getElementById('title-name').textContent = name;
+            document.getElementById('crumb-name').textContent = name;
+            document.getElementById('title-badge').innerHTML = badge();
+            document.getElementById('title-meta').textContent = `Был ${fmt.relative(visitor.last_seen)} · ${fmt.number(visitor.visit_count)} ${UI.plural(visitor.visit_count, ['визит', 'визита', 'визитов'])}`;
+            document.getElementById('visitor-name').value = visitor.name || '';
+            document.getElementById('visitor-notes').value = visitor.notes || '';
+            flagged.checked = Boolean(visitor.is_flagged);
+            employee.checked = Boolean(visitor.is_employee);
+            document.getElementById('info-id').textContent = visitor.id;
+            document.getElementById('info-id').title = visitor.id;
+            document.getElementById('info-visits').textContent = fmt.number(visitor.visit_count);
+            document.getElementById('info-first').textContent = fmt.dateTime(visitor.first_seen);
+            document.getElementById('info-last').textContent = fmt.dateTime(visitor.last_seen);
+            const img = document.getElementById('detail-snapshot');
+            if (visitor.face_snapshot) {
+                img.src = UI.snapshotUrl(visitor.face_snapshot);
+                img.alt = `Фото: ${name}`;
+                img.hidden = false;
+                img.onerror = () => { img.hidden = true; };
+            }
         }
 
-        // Toggle Employee Switch
-        const btnEmployee = document.getElementById('toggle-employee');
-        const dotEmployee = document.getElementById('dot-employee');
-        if (isEmployee) {
-            btnEmployee.style.backgroundColor = 'rgb(37, 99, 235)'; // blue-600
-            dotEmployee.style.transform = 'translateX(1.25rem)';
-        } else {
-            btnEmployee.style.backgroundColor = 'rgb(75, 85, 99)'; // gray-600
-            dotEmployee.style.transform = 'translateX(0)';
+        async function loadVisitor() {
+            try {
+                visitor = await api(url);
+                render();
+            } catch (error) {
+                document.getElementById('visitor-layout').innerHTML = `<div class="lg:col-span-3 card">${UI.emptyState({
+                    iconName: 'user-x',
+                    title: error.status === 404 ? 'Посетитель не найден' : 'Не удалось загрузить профиль',
+                    text: error.status === 404 ? 'Профиль мог быть удалён при очистке списка.' : error.message,
+                    action: '<a href="/visitors" class="btn btn-primary">К списку посетителей</a>',
+                })}</div>`;
+                document.getElementById('title-name').textContent = 'Профиль недоступен';
+            }
         }
-    }
 
-    function toggleFlaggedStatus() {
-        if(isEmployee && !isFlagged) {
-            isEmployee = false; // Cannot be employee and flagged simultaneously
-        }
-        isFlagged = !isFlagged;
-        updateBadgesAndToggles();
-    }
-
-    function toggleEmployeeStatus() {
-        if(isFlagged && !isEmployee) {
-            isFlagged = false; // Cannot be employee and flagged simultaneously
-        }
-        isEmployee = !isEmployee;
-        updateBadgesAndToggles();
-    }
-
-    function fetchVisitorHistory() {
-        const timeline = document.getElementById('history-timeline');
-        fetch(`/api/visitors/${visitorId}/events`)
-            .then(res => res.json())
-            .then(events => {
-                if (events.length === 0) {
-                    timeline.innerHTML = '<div class="text-center text-gray-500 py-10">Событий посещения не зафиксировано.</div>';
+        async function loadHistory() {
+            const box = document.getElementById('history-timeline');
+            try {
+                history = await api(`${url}/events`);
+                const count = document.getElementById('history-count');
+                count.hidden = !history.length;
+                count.textContent = `${history.length}`;
+                if (!history.length) {
+                    box.innerHTML = UI.emptyState({ iconName: 'history', title: 'Фиксаций нет', text: 'События с этим человеком появятся, когда камеры его распознают.' });
                     return;
                 }
-                
-                let html = '';
-                events.forEach(e => {
-                    const timeStr = new Date(e.timestamp).toLocaleString('ru-RU');
-                    const imgHtml = e.snapshot_path ? `<img src="/media/snapshots/${e.snapshot_path.split('/').pop()}" class="w-16 h-16 rounded object-cover shadow border border-gray-700" onerror="this.style.display='none'">` : '';
-                    
-                    html += `
-                        <div class="flex items-start gap-4 p-3 bg-gray-900/40 border border-gray-750 rounded-lg hover:border-gray-600 transition">
-                            <div class="flex-shrink-0 mt-1.5">
-                                <span class="flex h-3 w-3 relative">
-                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                  <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-                                </span>
-                            </div>
-                            <div class="flex-grow">
-                                <p class="text-sm font-semibold text-white">${e.camera_name}</p>
-                                <p class="text-xs text-gray-400 mt-0.5">${timeStr}</p>
-                                <div class="mt-1 flex items-center gap-2">
-                                    <span class="text-[10px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">Точность: ${(e.confidence * 100).toFixed(0)}%</span>
-                                    <span class="text-[10px] bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded">${e.event_type}</span>
-                                </div>
-                            </div>
-                            ${imgHtml}
-                        </div>
-                    `;
-                });
-                timeline.innerHTML = html;
-            });
-    }
+                box.innerHTML = `<ol class="divide-y divide-line">${history.map((e, index) => {
+                    const snap = UI.snapshotUrl(e.snapshot_path);
+                    return `<li>
+                        <button type="button" class="w-full text-left flex items-center gap-3 px-5 py-3 hover:bg-surface-2 transition-colors" data-index="${index}">
+                            <span class="relative w-20 aspect-video rounded-md overflow-hidden border border-line bg-surface-2 shrink-0 grid place-items-center text-subtle">
+                                ${icon(UI.eventMeta(e.event_type).icon)}
+                                ${snap ? `<img src="${snap}" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()">` : ''}
+                            </span>
+                            <span class="min-w-0 flex-1">
+                                <span class="flex flex-wrap items-center gap-2">${UI.eventBadge(e.event_type, { size: 'badge-sm' })}</span>
+                                <span class="block mt-1 text-sm font-medium text-fg truncate">${escapeHtml(e.camera_name)}</span>
+                            </span>
+                            <span class="text-right shrink-0">
+                                <span class="block text-sm text-muted">${escapeHtml(fmt.dateTime(e.timestamp))}</span>
+                                ${e.confidence != null ? `<span class="block text-xs text-subtle num">${fmt.percent(e.confidence)}</span>` : ''}
+                            </span>
+                        </button>
+                    </li>`;
+                }).join('')}</ol>`;
+            } catch (error) {
+                box.innerHTML = UI.errorState(error.message);
+            }
+        }
 
-    function saveVisitorDetails(e) {
-        e.preventDefault();
-        const name = document.getElementById('visitor-name').value.trim();
-        const notes = document.getElementById('visitor-notes').value.trim();
-        
-        fetch(`/api/visitors/${visitorId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: name === "" ? null : name,
-                notes: notes === "" ? null : notes,
-                is_flagged: isFlagged,
-                is_employee: isEmployee
-            })
-        })
-        .then(res => {
-            if(!res.ok) throw new Error('Ошибка при сохранении');
-            return res.json();
-        })
-        .then(data => {
-            alert('Изменения сохранены!');
-            fetchVisitorData(); // reload layout
-        })
-        .catch(err => alert(err.message));
-    }
+        flagged.addEventListener('change', () => {
+            if (flagged.checked) employee.checked = false;
+            document.getElementById('title-badge').innerHTML = badge();
+        });
+        employee.addEventListener('change', () => {
+            if (employee.checked) flagged.checked = false;
+            document.getElementById('title-badge').innerHTML = badge();
+        });
 
-    // Init
-    fetchVisitorData();
-    fetchVisitorHistory();
+        document.getElementById('edit-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const name = document.getElementById('visitor-name').value.trim();
+            const notes = document.getElementById('visitor-notes').value.trim();
+            const button = document.getElementById('btn-save');
+            UI.setBusy(button, true, 'Сохранение…');
+            try {
+                await api(url, { method: 'PUT', json: { name: name || null, notes: notes || null, is_flagged: flagged.checked, is_employee: employee.checked } });
+                UI.toast('Профиль сохранён');
+                await loadVisitor();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось сохранить профиль' });
+            } finally {
+                UI.setBusy(button, false);
+            }
+        });
+
+        document.getElementById('btn-delete').addEventListener('click', async () => {
+            const ok = await UI.confirm({ title: 'Удалить профиль?', message: 'Профиль посетителя будет удалён без возможности восстановления. События останутся без привязки к человеку.', confirmText: 'Удалить профиль' });
+            if (!ok) return;
+            try {
+                await api(url, { method: 'DELETE' });
+                window.location.href = '/visitors';
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось удалить профиль' });
+            }
+        });
+
+        document.getElementById('photo-button').addEventListener('click', () => {
+            const img = document.getElementById('detail-snapshot');
+            if (!img.hidden && img.src) UI.openImage(img.src, img.alt);
+        });
+        document.getElementById('history-timeline').addEventListener('click', (event) => {
+            if (event.target.closest('[data-retry]')) { loadHistory(); return; }
+            const row = event.target.closest('[data-index]');
+            if (!row) return;
+            UI.openEvent(history, Number(row.dataset.index), { cameraName: (_id, e) => e.camera_name });
+        });
+
+        loadVisitor();
+        loadHistory();
+    })();
 </script>
 {% endblock %}

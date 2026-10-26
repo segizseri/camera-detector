@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, page_header %}
+{% block title %}Отчёты{% endblock %}
+{% block content %}
+{% call page_header("Отчёты", "Сводка инцидентов детекторов: какие события, на каких камерах и когда.") %}
+    <div class="seg" role="group" aria-label="Период" id="period">
+        <button type="button" data-period="24h" aria-pressed="true">24 часа</button>
+        <button type="button" data-period="7d" aria-pressed="false">7 дней</button>
+        <button type="button" data-period="all" aria-pressed="false">Все</button>
+    </div>
+{% endcall %}
+
+<div class="alert alert-info mb-4" id="limit-note">
+    {{ icon("info") }}
+    <p>Отчёт строится по последним 100 событиям, которые отдаёт сервер. Для длинных периодов с большим числом событий цифры будут неполными. Пассажиропоток — в разделе <a class="link" href="/reports/passengers">Транспорт</a>.</p>
+</div>
+
+<section class="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4" aria-label="Итоги периода">
+    <div class="card kpi"><div class="kpi-label">Инциденты <span class="kpi-icon">{{ icon("bell", "icon-sm") }}</span></div><div class="kpi-value" id="kpi-total">—</div><div class="kpi-meta" id="kpi-total-meta">&nbsp;</div></div>
+    <div class="card kpi"><div class="kpi-label">Критичные <span class="kpi-icon">{{ icon("alert-octagon", "icon-sm") }}</span></div><div class="kpi-value" id="kpi-critical">—</div><div class="kpi-meta">драки</div></div>
+    <div class="card kpi"><div class="kpi-label">Камер с инцидентами <span class="kpi-icon">{{ icon("video", "icon-sm") }}</span></div><div class="kpi-value" id="kpi-cameras">—</div><div class="kpi-meta" id="kpi-cameras-meta">&nbsp;</div></div>
+    <div class="card kpi"><div class="kpi-label">Пиковый час <span class="kpi-icon">{{ icon("clock", "icon-sm") }}</span></div><div class="kpi-value" id="kpi-peak">—</div><div class="kpi-meta" id="kpi-peak-meta">&nbsp;</div></div>
+</section>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
+    <section class="card" aria-labelledby="by-type-title">
+        <div class="card-header"><h2 class="card-title" id="by-type-title">{{ icon("target", "icon-sm text-subtle") }}По детекторам</h2></div>
+        <div class="card-body" id="by-type"></div>
+    </section>
+    <section class="card" aria-labelledby="by-camera-title">
+        <div class="card-header"><h2 class="card-title" id="by-camera-title">{{ icon("video", "icon-sm text-subtle") }}По камерам</h2></div>
+        <div class="card-body" id="by-camera"></div>
+    </section>
+</div>
+
+<section class="card mt-4" aria-labelledby="by-time-title">
+    <div class="card-header">
+        <h2 class="card-title" id="by-time-title">{{ icon("chart", "icon-sm text-subtle") }}<span id="by-time-label">По часам</span></h2>
+        <span class="text-xs text-subtle">Наведите на столбец, чтобы увидеть число</span>
+    </div>
+    <div class="card-body" id="by-time"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const { api, escapeHtml, icon, fmt, plural, eventMeta } = UI;
+        let events = [];
+        let cameraById = new Map();
+        let period = '24h';
+
+        function barList(rows, { href } = {}) {
+            const max = Math.max(1, ...rows.map((r) => r.value));
+            if (!rows.some((r) => r.value)) return UI.emptyState({ iconName: 'check-circle', title: 'Инцидентов нет', text: 'За выбранный период детекторы ничего не зафиксировали.' });
+            return `<ul class="space-y-3">${rows.map((r) => `<li>
+                <a href="${href ? href(r) : '#'}" class="group block rounded-md -mx-2 px-2 py-1 hover:bg-surface-2" aria-label="${escapeHtml(r.label)}: ${r.value}">
+                    <span class="flex items-center justify-between gap-3 text-sm">
+                        <span class="flex items-center gap-2 min-w-0 text-fg">${r.icon ? `<span class="${r.iconClass || 'text-subtle'}">${icon(r.icon, 'icon-sm')}</span>` : ''}<span class="truncate">${escapeHtml(r.label)}</span></span>
+                        <span class="font-semibold text-fg num">${r.value}</span>
+                    </span>
+                    <span class="mt-1.5 block h-2 rounded-r bg-surface-3 overflow-hidden" aria-hidden="true">
+                        <span class="block h-full rounded-r bg-primary transition-[width] duration-300" style="width:${(r.value / max) * 100}%"></span>
+                    </span>
+                </a>
+            </li>`).join('')}</ul>`;
+        }
+
+        function columns(buckets) {
+            const max = Math.max(1, ...buckets.map((b) => b.value));
+            if (!buckets.some((b) => b.value)) return UI.emptyState({ iconName: 'chart', title: 'Нет данных за период' });
+            return `<div class="flex items-end gap-[2px] h-44" role="img" aria-label="Инциденты по времени: ${buckets.filter((b) => b.value).map((b) => `${b.label} — ${b.value}`).join(', ')}">
+                ${buckets.map((b) => `<div class="group relative flex-1 h-full flex flex-col justify-end" title="${escapeHtml(b.label)}: ${b.value}">
+                    <div class="w-full rounded-t ${b.value ? 'bg-primary group-hover:bg-primary-hover' : 'bg-surface-3'}" style="height:${b.value ? Math.max(4, (b.value / max) * 100) : 2}%"></div>
+                </div>`).join('')}
+            </div>
+            <div class="flex gap-[2px] mt-2 text-[11px] text-subtle num" aria-hidden="true">
+                ${buckets.map((b, i) => `<div class="flex-1 text-center truncate">${i % Math.ceil(buckets.length / 12) === 0 ? escapeHtml(b.tick) : ''}</div>`).join('')}
+            </div>`;
+        }
+
+        function render() {
+            const now = Date.now();
+            const since = period === '24h' ? now - 86400e3 : period === '7d' ? now - 7 * 86400e3 : 0;
+            const incidents = events.filter((e) => eventMeta(e.event_type).group === 'detector' && (UI.parseDate(e.timestamp)?.getTime() || 0) >= since);
+
+            document.getElementById('kpi-total').textContent = incidents.length;
+            document.getElementById('kpi-total-meta').textContent = `${plural(incidents.length, ['событие', 'события', 'событий'])} детекторов`;
+            document.getElementById('kpi-critical').textContent = incidents.filter((e) => eventMeta(e.event_type).severity === 'critical').length;
+            const camIds = new Set(incidents.map((e) => e.camera_id));
+            document.getElementById('kpi-cameras').textContent = camIds.size;
+            document.getElementById('kpi-cameras-meta').textContent = `из ${cameraById.size}`;
+            const hours = Array(24).fill(0);
+            incidents.forEach((e) => { const d = UI.parseDate(e.timestamp); if (d) hours[d.getHours()] += 1; });
+            const peak = hours.indexOf(Math.max(...hours));
+            document.getElementById('kpi-peak').textContent = incidents.length ? `${String(peak).padStart(2, '0')}:00` : '—';
+            document.getElementById('kpi-peak-meta').textContent = incidents.length ? `${hours[peak]} ${plural(hours[peak], ['инцидент', 'инцидента', 'инцидентов'])}` : 'нет данных';
+
+            const byType = UI.detectors.map((d) => ({
+                label: d.title, icon: d.icon, iconClass: UI.SEVERITY[d.severity].text, type: d.legacy_event_type,
+                value: incidents.filter((e) => e.event_type === d.legacy_event_type).length,
+            }));
+            document.getElementById('by-type').innerHTML = barList(byType, { href: (r) => `/events-page?type=${encodeURIComponent(r.type)}` });
+
+            const byCam = [...camIds].map((id) => ({ id, label: cameraById.get(id)?.name || id, icon: 'video', value: incidents.filter((e) => e.camera_id === id).length }))
+                .sort((a, b) => b.value - a.value).slice(0, 8);
+            document.getElementById('by-camera').innerHTML = byCam.length
+                ? barList(byCam, { href: (r) => `/events-page?camera=${encodeURIComponent(r.id)}` })
+                : barList([]);
+
+            let buckets;
+            if (period === '24h') {
+                document.getElementById('by-time-label').textContent = 'По часам, последние 24 часа';
+                const start = new Date(now - 23 * 3600e3);
+                start.setMinutes(0, 0, 0);
+                buckets = Array.from({ length: 24 }, (_, i) => {
+                    const from = new Date(start.getTime() + i * 3600e3);
+                    const to = from.getTime() + 3600e3;
+                    const label = `${String(from.getHours()).padStart(2, '0')}:00`;
+                    return { label, tick: label, value: incidents.filter((e) => { const t = UI.parseDate(e.timestamp).getTime(); return t >= from.getTime() && t < to; }).length };
+                });
+            } else {
+                const days = period === '7d' ? 7 : Math.max(7, Math.min(60, Math.ceil((now - Math.min(now, ...incidents.map((e) => UI.parseDate(e.timestamp).getTime()))) / 86400e3) + 1));
+                document.getElementById('by-time-label').textContent = `По дням, последние ${days} ${plural(days, ['день', 'дня', 'дней'])}`;
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                buckets = Array.from({ length: days }, (_, i) => {
+                    const from = new Date(today.getTime() - (days - 1 - i) * 86400e3);
+                    const to = from.getTime() + 86400e3;
+                    return { label: fmt.date(from), tick: `${from.getDate()}.${String(from.getMonth() + 1).padStart(2, '0')}`, value: incidents.filter((e) => { const t = UI.parseDate(e.timestamp).getTime(); return t >= from.getTime() && t < to; }).length };
+                });
+            }
+            document.getElementById('by-time').innerHTML = columns(buckets);
+        }
+
+        async function load() {
+            try {
+                const [cams, list] = await Promise.all([UI.cameras().catch(() => []), api('/api/events/')]);
+                cameraById = new Map(cams.map((c) => [c.id, c]));
+                events = list;
+                render();
+            } catch (error) {
+                ['by-type', 'by-camera', 'by-time'].forEach((id) => { document.getElementById(id).innerHTML = UI.errorState(error.message); });
+            }
+        }
+
+        document.getElementById('period').addEventListener('click', (event) => {
+            const button = event.target.closest('[data-period]');
+            if (!button) return;
+            period = button.dataset.period;
+            document.querySelectorAll('#period [data-period]').forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+            render();
+        });
+        document.addEventListener('click', (event) => { if (event.target.closest('[data-retry]')) load(); });
+        load();
+        UI.poll(load, 60000);
+    })();
+</script>
+{% endblock %}

@@ -1,103 +1,207 @@
 {% extends "base.html" %}
-{% block title %}Управление автобусами | Laptop AI Box{% endblock %}
+{% from "_ui.html" import icon, page_header, skeleton_cards %}
+{% block title %}Автобусы{% endblock %}
 {% block content %}
-<div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold">Управление автобусами</h1>
-    <button id="btn-add-bus" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition">
-        <i class="fas fa-plus mr-2"></i> Добавить автобус
-    </button>
+{% call page_header("Автобусы", "Транспорт и камеры в салоне. Подсчёт пассажиров настраивается в карточке камеры.") %}
+    <a href="/reports/passengers" class="btn btn-secondary">{{ icon("chart-line", "icon-sm") }}Пассажиропоток</a>
+    <button type="button" id="btn-add-bus" class="btn btn-primary">{{ icon("plus", "icon-sm") }}Добавить автобус</button>
+{% endcall %}
+
+<div id="bus-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" aria-busy="true">
+    {{ skeleton_cards(3, "h-24") }}
 </div>
 
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="bus-list">
-    <!-- Buses will be loaded here -->
-</div>
+<dialog id="bus-dialog" class="modal" aria-labelledby="bus-dialog-title">
+    <form id="bus-form" class="contents" novalidate>
+        <div class="modal-header">
+            <h2 class="modal-title" id="bus-dialog-title">Новый автобус</h2>
+            <button type="button" class="btn btn-ghost btn-icon" data-dialog-close aria-label="Закрыть">{{ icon("x") }}</button>
+        </div>
+        <div class="modal-body space-y-4">
+            <div class="field">
+                <label class="label" for="bus-name">Название</label>
+                <input type="text" id="bus-name" class="input" required maxlength="120" placeholder="Например: Маршрут № 101" autocomplete="off">
+            </div>
+            <div class="field">
+                <label class="label" for="bus-plate">Госномер <span class="label-optional">— необязательно</span></label>
+                <input type="text" id="bus-plate" class="input input-mono uppercase" maxlength="20" placeholder="А123ВС 777" autocomplete="off">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-dialog-close>Отмена</button>
+            <button type="submit" class="btn btn-primary" id="bus-submit">Создать</button>
+        </div>
+    </form>
+</dialog>
 
-<!-- Add Bus Modal -->
-<div id="modal-bus" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
-    <div class="bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-700 w-full max-w-md">
-        <h2 class="text-xl font-bold mb-4">Новый автобус</h2>
-        <form id="bus-form" class="space-y-4">
-            <div>
-                <label class="block text-sm text-gray-400">Название (например: Маршрут №101)</label>
-                <input type="text" id="bus-name" required class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
+<dialog id="link-dialog" class="modal" aria-labelledby="link-dialog-title">
+    <form id="link-form" class="contents">
+        <div class="modal-header">
+            <h2 class="modal-title" id="link-dialog-title">Привязать камеру</h2>
+            <button type="button" class="btn btn-ghost btn-icon" data-dialog-close aria-label="Закрыть">{{ icon("x") }}</button>
+        </div>
+        <div class="modal-body space-y-3">
+            <p class="text-sm">Камера будет отвязана от текущего автобуса и привязана к «<span id="link-bus-name" class="text-fg font-semibold"></span>».</p>
+            <div class="field">
+                <label class="label" for="link-camera">Камера</label>
+                <select id="link-camera" class="select" required></select>
             </div>
-            <div>
-                <label class="block text-sm text-gray-400">Гос. номер</label>
-                <input type="text" id="bus-plate" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
-            </div>
-            <div class="flex justify-end gap-3 mt-6">
-                <button type="button" id="btn-close-modal" class="px-4 py-2 text-gray-400 hover:text-white">Отмена</button>
-                <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded font-bold">Создать</button>
-            </div>
-        </form>
-    </div>
-</div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-dialog-close>Отмена</button>
+            <button type="submit" class="btn btn-primary" id="link-submit">Привязать</button>
+        </div>
+    </form>
+</dialog>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    async function loadBuses() {
-        const res = await fetch('/api/buses/');
-        const buses = await res.json();
+    (function () {
+        const { api, escapeHtml, icon, plural } = UI;
         const list = document.getElementById('bus-list');
-        
-        if (buses.length === 0) {
-            list.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500 italic">Автобусы не найдены. Добавьте свой первый автобус!</div>';
-            return;
+        const dialog = document.getElementById('bus-dialog');
+        let buses = [];
+        let cameras = [];
+        let editId = null;
+        let linkBusId = null;
+
+        function card(bus) {
+            const cams = cameras.filter((c) => c.bus_id === bus.id);
+            const counting = cams.filter((c) => c.detect_passengers).length;
+            return `<article class="card flex flex-col" aria-labelledby="bus-${escapeHtml(bus.id)}">
+                <div class="card-body flex-1 space-y-4">
+                    <div class="flex items-start gap-3">
+                        <span class="detector-icon text-primary-text">${icon('bus')}</span>
+                        <div class="min-w-0 flex-1">
+                            <h2 class="font-semibold text-fg truncate" id="bus-${escapeHtml(bus.id)}">${escapeHtml(bus.name)}</h2>
+                            <p class="mono text-subtle">${escapeHtml(bus.license_plate || 'без госномера')}</p>
+                        </div>
+                        <button type="button" class="btn btn-ghost btn-sm btn-icon" data-edit="${escapeHtml(bus.id)}" aria-label="Изменить ${escapeHtml(bus.name)}">${icon('pencil', 'icon-sm')}</button>
+                    </div>
+                    <div class="flex flex-wrap gap-2 text-xs">
+                        <span class="chip">${icon('video', 'icon-xs')}${cams.length} ${plural(cams.length, ['камера', 'камеры', 'камер'])}</span>
+                        <span class="chip">${icon('users', 'icon-xs')}подсчёт на ${counting}</span>
+                    </div>
+                    ${cams.length ? `<ul class="space-y-1.5">${cams.map((c) => `<li class="flex items-center gap-2 text-sm">
+                        <span class="dot ${UI.cameraStatus(c.status).dot}" aria-hidden="true"></span>
+                        <a href="/cameras/${encodeURIComponent(c.id)}" class="text-fg hover:underline underline-offset-4 truncate">${escapeHtml(c.name)}</a>
+                        ${c.detect_passengers ? '<span class="badge badge-success badge-sm ml-auto">Подсчёт</span>' : '<span class="text-xs text-subtle ml-auto">без подсчёта</span>'}
+                    </li>`).join('')}</ul>` : '<p class="text-sm text-subtle">Камеры не привязаны</p>'}
+                </div>
+                <div class="card-footer justify-between">
+                    <button type="button" class="btn btn-secondary btn-sm" data-link="${escapeHtml(bus.id)}">${icon('link', 'icon-sm')}Привязать камеру</button>
+                    <button type="button" class="btn btn-ghost btn-sm text-critical-fg" data-delete="${escapeHtml(bus.id)}">${icon('trash', 'icon-sm')}Удалить</button>
+                </div>
+            </article>`;
         }
 
-        list.innerHTML = buses.map(bus => `
-            <div class="bg-gray-800 rounded-lg border border-gray-700 shadow-lg overflow-hidden group">
-                <div class="p-5">
-                    <div class="flex justify-between items-start mb-4">
-                        <div>
-                            <h3 class="text-xl font-bold text-gray-100">${bus.name}</h3>
-                            <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest">${bus.license_plate || 'БЕЗ НОМЕРА'}</p>
-                        </div>
-                        <i class="fas fa-bus text-3xl text-blue-500/20 group-hover:text-blue-500/50 transition-colors"></i>
-                    </div>
-                    
-                    <div class="flex items-center gap-2 text-sm text-gray-400 mb-6">
-                        <i class="fas fa-video"></i>
-                        <span>Привязано камер: ${bus.cameras ? bus.cameras.length : 0}</span>
-                    </div>
+        async function load() {
+            try {
+                [buses, cameras] = await Promise.all([api('/api/buses/'), UI.cameras({ refresh: true }).catch(() => [])]);
+                list.setAttribute('aria-busy', 'false');
+                list.innerHTML = buses.length
+                    ? buses.map(card).join('')
+                    : `<div class="col-span-full card">${UI.emptyState({ iconName: 'bus', title: 'Автобусов пока нет', text: 'Добавьте автобус и привяжите к нему камеры салона для подсчёта пассажиров.', action: '<button type="button" class="btn btn-primary btn-sm" data-add>Добавить автобус</button>' })}</div>`;
+            } catch (error) {
+                list.setAttribute('aria-busy', 'false');
+                list.innerHTML = `<div class="col-span-full card">${UI.errorState(error.message)}</div>`;
+            }
+        }
 
-                    <div class="grid grid-cols-2 gap-3">
-                        <a href="/cameras" class="bg-gray-700 hover:bg-gray-600 text-white text-center py-2 rounded text-sm transition">
-                            Камеры
-                        </a>
-                        <button onclick="deleteBus('${bus.id}')" class="bg-red-900/20 hover:bg-red-600 text-red-500 hover:text-white py-2 rounded text-sm transition">
-                            Удалить
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `).join('');
-    }
+        function openBusDialog(bus) {
+            editId = bus ? bus.id : null;
+            document.getElementById('bus-dialog-title').textContent = bus ? 'Изменить автобус' : 'Новый автобус';
+            document.getElementById('bus-submit').textContent = bus ? 'Сохранить' : 'Создать';
+            document.getElementById('bus-name').value = bus ? bus.name : '';
+            document.getElementById('bus-plate').value = bus ? (bus.license_plate || '') : '';
+            document.getElementById('bus-name').removeAttribute('aria-invalid');
+            dialog.showModal();
+            document.getElementById('bus-name').focus();
+        }
 
-    const modal = document.getElementById('modal-bus');
-    document.getElementById('btn-add-bus').addEventListener('click', () => modal.classList.replace('hidden', 'flex'));
-    document.getElementById('btn-close-modal').addEventListener('click', () => modal.classList.replace('flex', 'hidden'));
+        document.getElementById('btn-add-bus').addEventListener('click', () => openBusDialog(null));
 
-    document.getElementById('bus-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const data = {
-            name: document.getElementById('bus-name').value,
-            license_plate: document.getElementById('bus-plate').value
-        };
-        await fetch('/api/buses/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+        document.getElementById('bus-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const nameInput = document.getElementById('bus-name');
+            const name = nameInput.value.trim();
+            if (!name) {
+                nameInput.setAttribute('aria-invalid', 'true');
+                nameInput.focus();
+                return;
+            }
+            // PATCH пропускает null, поэтому пустой госномер при редактировании отправляем пустой строкой.
+            const plate = document.getElementById('bus-plate').value.trim().toUpperCase();
+            const payload = { name, license_plate: plate || (editId ? '' : null) };
+            const button = document.getElementById('bus-submit');
+            UI.setBusy(button, true, 'Сохранение…');
+            try {
+                if (editId) await api(`/api/buses/${encodeURIComponent(editId)}`, { method: 'PATCH', json: payload });
+                else await api('/api/buses/', { method: 'POST', json: payload });
+                dialog.close();
+                UI.toast(editId ? 'Автобус обновлён' : `Автобус «${name}» добавлен`);
+                load();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось сохранить автобус' });
+            } finally {
+                UI.setBusy(button, false);
+            }
         });
-        modal.classList.replace('flex', 'hidden');
-        loadBuses();
-    });
 
-    async function deleteBus(id) {
-        if (!confirm('Вы уверены? Камеры не будут удалены, они просто отвяжутся от автобуса.')) return;
-        await fetch(`/api/buses/${id}`, { method: 'DELETE' });
-        loadBuses();
-    }
+        document.getElementById('link-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const camId = document.getElementById('link-camera').value;
+            if (!camId) return;
+            const button = document.getElementById('link-submit');
+            UI.setBusy(button, true);
+            try {
+                await api(`/api/buses/${encodeURIComponent(linkBusId)}/link-camera/${encodeURIComponent(camId)}`, { method: 'POST' });
+                document.getElementById('link-dialog').close();
+                UI.toast('Камера привязана');
+                load();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось привязать камеру' });
+            } finally {
+                UI.setBusy(button, false);
+            }
+        });
 
-    loadBuses();
+        list.addEventListener('click', async (event) => {
+            if (event.target.closest('[data-retry]')) { load(); return; }
+            if (event.target.closest('[data-add]')) { openBusDialog(null); return; }
+            const edit = event.target.closest('[data-edit]');
+            if (edit) { openBusDialog(buses.find((b) => b.id === edit.dataset.edit)); return; }
+            const link = event.target.closest('[data-link]');
+            if (link) {
+                linkBusId = link.dataset.link;
+                const bus = buses.find((b) => b.id === linkBusId);
+                const candidates = cameras.filter((c) => c.bus_id !== linkBusId);
+                if (!candidates.length) { UI.toast('Все камеры уже привязаны к этому автобусу', { type: 'info' }); return; }
+                document.getElementById('link-bus-name').textContent = bus.name;
+                document.getElementById('link-camera').innerHTML = candidates.map((c) => {
+                    const current = buses.find((b) => b.id === c.bus_id);
+                    return `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}${current ? ` (сейчас: ${escapeHtml(current.name)})` : ''}</option>`;
+                }).join('');
+                document.getElementById('link-dialog').showModal();
+                return;
+            }
+            const del = event.target.closest('[data-delete]');
+            if (del) {
+                const bus = buses.find((b) => b.id === del.dataset.delete);
+                const ok = await UI.confirm({ title: `Удалить «${bus?.name}»?`, message: 'Камеры не удаляются: они просто отвяжутся от автобуса.', confirmText: 'Удалить автобус' });
+                if (!ok) return;
+                try {
+                    await api(`/api/buses/${encodeURIComponent(del.dataset.delete)}`, { method: 'DELETE' });
+                    UI.toast('Автобус удалён');
+                    load();
+                } catch (error) {
+                    UI.toast(error.message, { type: 'error', title: 'Не удалось удалить автобус' });
+                }
+            }
+        });
+
+        load();
+    })();
 </script>
 {% endblock %}

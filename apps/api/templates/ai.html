@@ -1,59 +1,152 @@
 {% extends "base.html" %}
-{% block title %}Мониторинг ИИ | Laptop AI Box{% endblock %}
+{% from "_ui.html" import icon, page_header %}
+{% block title %}AI и обучение{% endblock %}
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Мониторинг ИИ Воркера</h1>
-<div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
-    <p class="text-gray-400 italic mb-4">Просмотр статуса локального движка ИИ и текущих обнаружений.</p>
+{% call page_header("AI и обучение", "Состояние AI-воркера, моделей и детекторов на камерах.") %}
+    <span class="text-xs text-subtle" id="updated-at" aria-live="polite"></span>
+{% endcall %}
 
-    <div class="overflow-x-auto">
-        <table class="w-full text-left table-auto">
-            <thead class="bg-gray-900 border-b border-gray-700">
-                <tr>
-                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Камера</th>
-                    <th class="px-4 py-3 text-sm font-medium text-gray-300">ИИ включен</th>
-                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Целевой FPS</th>
-                    <th class="px-4 py-3 text-sm font-medium text-gray-300">Статус</th>
-                </tr>
-            </thead>
-            <tbody id="ai-table" class="divide-y divide-gray-700">
-                <tr>
-                    <td colspan="4" class="text-center py-4 text-gray-500">Загрузка статуса ИИ...</td>
-                </tr>
-            </tbody>
-        </table>
+<nav class="tabs" aria-label="Разделы AI">
+    <a href="/ai" class="tab" aria-current="page">{{ icon("cpu", "icon-sm") }}Мониторинг</a>
+    <a href="/finetune" class="tab">{{ icon("graduation", "icon-sm") }}Сбор датасета и обучение</a>
+</nav>
+
+<section class="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4" aria-label="Сводка">
+    <div class="card kpi">
+        <div class="kpi-label">Камеры с AI <span class="kpi-icon">{{ icon("video", "icon-sm") }}</span></div>
+        <div class="kpi-value" id="kpi-ai">—</div>
+        <div class="kpi-meta" id="kpi-ai-meta">&nbsp;</div>
     </div>
+    <div class="card kpi">
+        <div class="kpi-label">Модель действий <span class="kpi-icon">{{ icon("sparkles", "icon-sm") }}</span></div>
+        <div class="kpi-value text-xl leading-9" id="kpi-model">—</div>
+        <div class="kpi-meta" id="kpi-model-meta">&nbsp;</div>
+    </div>
+    <div class="card kpi">
+        <div class="kpi-label">Потоки HLS <span class="kpi-icon">{{ icon("activity", "icon-sm") }}</span></div>
+        <div class="kpi-value" id="kpi-hls">—</div>
+        <div class="kpi-meta" id="kpi-hls-meta">&nbsp;</div>
+    </div>
+    <div class="card kpi">
+        <div class="kpi-label">Диск данных <span class="kpi-icon">{{ icon("hard-drive", "icon-sm") }}</span></div>
+        <div class="kpi-value" id="kpi-disk">—</div>
+        <div class="kpi-meta" id="kpi-disk-meta">&nbsp;</div>
+    </div>
+</section>
+
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mt-4 items-start">
+    <section class="card xl:col-span-2 overflow-hidden" aria-labelledby="workers-title">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title" id="workers-title">{{ icon("cpu", "icon-sm text-subtle") }}Камеры в AI-воркере</h2>
+                <p class="card-subtitle">Обновляется каждые 5 секунд</p>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th scope="col">Камера</th><th scope="col">Поток</th><th scope="col">AI</th><th scope="col" class="cell-num">Частота</th><th scope="col">Детекторы</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
+                <tbody id="ai-table">
+                    {% for _ in range(3) %}<tr aria-hidden="true"><td colspan="6"><div class="skeleton skeleton-text w-full"></div></td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="catalog-title">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title" id="catalog-title">{{ icon("target", "icon-sm text-subtle") }}Каталог детекторов</h2>
+                <p class="card-subtitle">Контракт AI-движка <span id="contract-version"></span></p>
+            </div>
+        </div>
+        <ul class="divide-y divide-line" id="catalog-list"></ul>
+    </section>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    async function loadAI() {
-        const res = await fetch('/api/cameras');
-        const cams = await res.json();
+    (function () {
+        const { api, escapeHtml, icon, fmt, plural, activeDetectors } = UI;
+        let lastSignature = '';
+        document.getElementById('contract-version').textContent = `v${(window.DETECTOR_CATALOG || {}).contract_version || '—'}`;
 
-        const table = document.getElementById('ai-table');
-        if (cams.length === 0) {
-            table.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">Камеры не настроены</td></tr>';
-            return;
+        function renderCatalog(cams) {
+            document.getElementById('catalog-list').innerHTML = UI.detectors.map((d) => {
+                const count = cams.filter((c) => c.ai_enabled && c[d.legacy_flag]).length;
+                const maturity = UI.MATURITY[d.maturity] || UI.MATURITY.concept;
+                return `<li class="flex items-center gap-3 px-5 py-3">
+                    <span class="detector-icon ${UI.SEVERITY[d.severity].text}">${icon(d.icon, 'icon-sm')}</span>
+                    <span class="min-w-0 flex-1">
+                        <span class="flex flex-wrap items-center gap-2"><span class="font-semibold text-fg">${escapeHtml(d.title)}</span><span class="badge badge-sm ${maturity.badge}" title="${escapeHtml(maturity.hint)}">${maturity.label}</span></span>
+                        <span class="block text-xs text-subtle">${d.zones.length ? `Нужна ${escapeHtml(d.zones.map((z) => z.title.toLowerCase()).join(', '))}` : 'Без зон'} · от ${d.min_fps} кадр/с</span>
+                    </span>
+                    <span class="text-right shrink-0"><span class="block text-lg font-semibold text-fg num">${count}</span><span class="block text-xs text-subtle">${plural(count, ['камера', 'камеры', 'камер'])}</span></span>
+                </li>`;
+            }).join('');
         }
 
-        table.innerHTML = cams.map(cam => `
-            <tr class="hover:bg-gray-700/50">
-                <td class="px-4 py-3 text-white font-medium">${cam.name} <span class="text-xs text-gray-500 ml-2">CH: ${cam.channel}</span></td>
-                <td class="px-4 py-3">
-                    ${cam.ai_enabled
-                ? '<span class="text-green-400 bg-green-900/40 px-2 py-1 rounded text-xs"><i class="fas fa-check"></i> Включен</span>'
-                : '<span class="text-gray-500 bg-gray-900 px-2 py-1 rounded text-xs"><i class="fas fa-times"></i> Выключен</span>'}
-                </td>
-                <td class="px-4 py-3 text-gray-300 font-mono">${cam.fps_limit} fps</td>
-                <td class="px-4 py-3">
-                    ${cam.status === 'online' 
-                        ? `<span class="text-green-400 bg-green-900/40 px-2 py-1 rounded text-xs"><i class="fas fa-circle mr-1"></i> Онлайн</span>
-                           <div class="text-[10px] text-gray-500 mt-1">Активен: ${new Date(cam.last_seen).toLocaleTimeString()}</div>`
-                        : `<span class="text-blue-400 bg-blue-900/40 px-2 py-1 rounded text-xs">Ожидание воркера...</span>`}
-                </td>
-            </tr>
-        `).join('');
-    }
-    setInterval(loadAI, 5000);
-    loadAI();
+        function renderTable(cams) {
+            const body = document.getElementById('ai-table');
+            if (!cams.length) {
+                body.innerHTML = `<tr><td colspan="6">${UI.emptyState({ iconName: 'video-off', title: 'Камеры не настроены', text: 'Импортируйте камеры из NVR, затем включите на них AI.', action: '<a href="/nvr" class="btn btn-primary btn-sm">Импорт из NVR</a>' })}</td></tr>`;
+                return;
+            }
+            body.innerHTML = cams.map((cam) => {
+                const dets = activeDetectors(cam);
+                const active = cam.enabled && cam.ai_enabled;
+                const lowFps = active && dets.some((d) => cam.fps_limit < d.min_fps);
+                return `<tr>
+                    <td><a href="/cameras/${encodeURIComponent(cam.id)}" class="font-semibold text-fg hover:underline underline-offset-4">${escapeHtml(cam.name)}</a><div class="text-xs text-subtle">Канал ${escapeHtml(cam.channel ?? '—')}${cam.last_seen ? ` · ${escapeHtml(fmt.relative(cam.last_seen))}` : ''}</div></td>
+                    <td>${UI.cameraStatusBadge(cam.status)}</td>
+                    <td>${!cam.enabled ? '<span class="badge badge-system">Камера выкл.</span>' : cam.ai_enabled ? '<span class="badge badge-primary">' + icon('check', 'icon-xs') + 'Включён</span>' : '<span class="badge badge-outline">Выключен</span>'}</td>
+                    <td class="cell-num"><span class="${lowFps ? 'text-medium-fg font-semibold' : ''}" ${lowFps ? 'title="Детекторам нужно не меньше 5 кадр/с"' : ''}>${escapeHtml(cam.fps_limit)} кадр/с</span></td>
+                    <td><div class="flex gap-1">${cam.ai_enabled ? (dets.map((d) => `<span class="chip px-1.5" title="${escapeHtml(d.title)}">${icon(d.icon, 'icon-xs')}<span class="sr-only">${escapeHtml(d.title)}</span></span>`).join('') || '<span class="text-xs text-subtle">не выбраны</span>') : '<span class="text-xs text-subtle">—</span>'}</div></td>
+                    <td class="text-right"><a href="/cameras/${encodeURIComponent(cam.id)}" class="btn btn-ghost btn-sm btn-icon" aria-label="Настроить ${escapeHtml(cam.name)}">${icon('chevron-right', 'icon-sm')}</a></td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function load() {
+            const [cams, metrics, system] = await Promise.all([
+                UI.cameras({ refresh: true }).catch(() => null),
+                api('/api/system/metrics').catch(() => null),
+                api('/api/detection-tests/system').catch(() => null),
+            ]);
+            if (!cams) {
+                document.getElementById('ai-table').innerHTML = `<tr><td colspan="6">${UI.errorState('Сервер не ответил. Повторим через 5 секунд.')}</td></tr>`;
+                return;
+            }
+            // Таблицу перерисовываем только при изменениях, чтобы не сбивать фокус клавиатуры.
+            const signature = JSON.stringify(cams.map((c) => [c, fmt.relative(c.last_seen)]));
+            if (signature !== lastSignature) {
+                lastSignature = signature;
+                renderTable(cams);
+                renderCatalog(cams);
+            }
+            const ai = cams.filter((c) => c.enabled && c.ai_enabled);
+            document.getElementById('kpi-ai').innerHTML = `${ai.length}<span class="text-muted text-xl font-medium"> / ${cams.length}</span>`;
+            document.getElementById('kpi-ai-meta').textContent = ai.length ? `${ai.filter((c) => c.status === 'online').length} в сети` : 'AI выключен на всех камерах';
+            if (system) {
+                const general = system.models?.general || system.model;
+                const others = Object.entries(system.models || {}).filter(([k]) => k !== 'general');
+                document.getElementById('kpi-model').innerHTML = general?.available ? `<span class="text-success-fg">Загружена</span>` : `<span class="text-critical-fg">Нет весов</span>`;
+                document.getElementById('kpi-model-meta').textContent = general?.available
+                    ? `${general.filename} · ${fmt.bytes(general.size_bytes)} · ${fmt.dateTime(general.updated_at)}${others.length ? ` · ещё ${others.filter(([, m]) => m.available).length} канд.` : ''}`
+                    : 'Обучите модель на вкладке «Сбор датасета и обучение»';
+            }
+            if (metrics) {
+                document.getElementById('kpi-hls').textContent = metrics.hls.active_processes;
+                document.getElementById('kpi-hls-meta').textContent = `Простаивающий поток останавливается через ${Math.round(metrics.hls.idle_timeout_seconds / 60)} мин`;
+                document.getElementById('kpi-disk').textContent = `${Math.round(metrics.disk.used_percent)}%`;
+                document.getElementById('kpi-disk-meta').textContent = `Свободно ${fmt.bytes(metrics.disk.free)} из ${fmt.bytes(metrics.disk.total)}`;
+            }
+            document.getElementById('updated-at').textContent = `Обновлено в ${fmt.time(new Date())}`;
+        }
+
+        document.addEventListener('click', (event) => { if (event.target.closest('[data-retry]')) load(); });
+        load();
+        UI.poll(load, 5000);
+    })();
 </script>
 {% endblock %}

@@ -1,70 +1,225 @@
 {% extends "base.html" %}
-{% block title %}Настройки | Laptop AI Box{% endblock %}
+{% from "_ui.html" import icon, page_header %}
+{% block title %}Настройки{% endblock %}
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Глобальные настройки</h1>
-<div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700 max-w-2xl">
-    <p class="text-gray-400 mb-6">Настройте глобальные параметры для AI Box.</p>
+{{ page_header("Настройки", "Параметры детекции, хранение данных, обслуживание базы и оформление интерфейса.") }}
 
-    <form id="settings-form" class="space-y-6">
-        <div>
-            <label class="block text-sm font-medium text-gray-300">Хранение данных (Дней)</label>
-            <input type="number" id="retention_days"
-                class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+    <form id="settings-form" class="card xl:col-span-2" novalidate>
+        <div class="card-header">
+            <h2 class="card-title">{{ icon("sliders", "icon-sm text-subtle") }}Параметры системы</h2>
         </div>
+        <div class="card-body space-y-6">
+            <fieldset class="space-y-4">
+                <legend class="section-title mb-3">Детекция</legend>
+                <div class="field">
+                    <span class="label" id="sens-label">Чувствительность детектора драк</span>
+                    <div class="seg seg-block" role="radiogroup" aria-labelledby="sens-label" id="sens-seg">
+                        <label><input type="radio" name="fight_sensitivity" value="low" class="sr-only">Низкая</label>
+                        <label><input type="radio" name="fight_sensitivity" value="medium" class="sr-only" checked>Средняя</label>
+                        <label><input type="radio" name="fight_sensitivity" value="high" class="sr-only">Высокая</label>
+                    </div>
+                    <p class="hint" id="sens-hint"></p>
+                </div>
+                <div class="field">
+                    <label class="label" for="min_confidence">Минимальная уверенность</label>
+                    <div class="flex items-center gap-3">
+                        <input type="number" id="min_confidence" class="input num w-32" step="0.01" min="0" max="1" placeholder="0.65" aria-describedby="conf-hint">
+                        <span class="text-muted num" id="conf-percent"></span>
+                    </div>
+                    <p class="hint" id="conf-hint">Число от 0 до 1. Значение сохраняется, но текущий AI-воркер его не читает: пороги детекторов заданы в каталоге.</p>
+                </div>
+            </fieldset>
 
-        <div>
-            <label class="block text-sm font-medium text-gray-300">Минимальный порог уверенности (%)</label>
-            <input type="number" id="min_confidence" step="0.01"
-                class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
+            <hr class="divider">
+
+            <fieldset class="space-y-4">
+                <legend class="section-title mb-3">Хранение данных</legend>
+                <div class="field">
+                    <label class="label" for="retention_days">Срок хранения событий и медиа</label>
+                    <div class="flex items-center gap-3">
+                        <input type="number" id="retention_days" class="input num w-32" min="1" max="3650" step="1" aria-describedby="retention-hint">
+                        <span class="text-muted">дней</span>
+                    </div>
+                    <p class="hint" id="retention-hint">Старые события, снимки, клипы и результаты проверок удаляются автоматически раз в час.</p>
+                </div>
+            </fieldset>
         </div>
-
-        <div>
-            <label class="block text-sm font-medium text-gray-300">Чувствительность обнаружения драк</label>
-            <select id="fight_sensitivity" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500">
-                <option value="low">Низкая</option>
-                <option value="medium">Средняя</option>
-                <option value="high">Высокая</option>
-            </select>
+        <div class="card-footer">
+            <span class="text-sm text-subtle mr-auto" id="settings-state" aria-live="polite"></span>
+            <button type="submit" class="btn btn-primary" id="btn-save">{{ icon("save", "icon-sm") }}Сохранить</button>
         </div>
-
-        <button type="submit"
-            class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded shadow transition">
-            Сохранить настройки
-        </button>
     </form>
+
+    <div class="space-y-4">
+        <section class="card" aria-labelledby="theme-title">
+            <div class="card-header"><h2 class="card-title" id="theme-title">{{ icon("sun", "icon-sm text-subtle") }}Оформление</h2></div>
+            <div class="card-body space-y-2">
+                <div class="seg seg-block" role="group" aria-label="Тема интерфейса">
+                    <button type="button" data-theme-choice="dark" aria-pressed="true">{{ icon("moon", "icon-sm") }}Тёмная</button>
+                    <button type="button" data-theme-choice="light" aria-pressed="false">{{ icon("sun", "icon-sm") }}Светлая</button>
+                </div>
+                <p class="hint">Тема запоминается в этом браузере.</p>
+            </div>
+        </section>
+
+        <section class="card" aria-labelledby="disk-title">
+            <div class="card-header"><h2 class="card-title" id="disk-title">{{ icon("hard-drive", "icon-sm text-subtle") }}Диск и очистка</h2></div>
+            <div class="card-body space-y-3">
+                <div>
+                    <div class="flex justify-between text-sm mb-1.5"><span class="text-muted">Занято</span><span class="text-fg font-semibold num" id="disk-text">—</span></div>
+                    <div class="progress" role="progressbar" aria-label="Заполнение диска данных" aria-valuemin="0" aria-valuemax="100" id="disk-progress"><div class="progress-bar" id="disk-bar" style="width:0%"></div></div>
+                    <p class="hint mt-1.5" id="disk-meta">&nbsp;</p>
+                </div>
+                <button type="button" class="btn btn-secondary btn-block" id="btn-cleanup">{{ icon("refresh", "icon-sm") }}Очистить устаревшее сейчас</button>
+                <div id="cleanup-result" aria-live="polite"></div>
+            </div>
+        </section>
+
+        <section class="card border-critical/30" aria-labelledby="danger-title">
+            <div class="card-header"><h2 class="card-title" id="danger-title">{{ icon("database", "icon-sm text-critical-fg") }}Обслуживание базы</h2></div>
+            <div class="card-body space-y-3">
+                <div class="flex items-center justify-between gap-3">
+                    <div><div class="font-semibold text-fg">События</div><p class="hint">Удалить все события всех камер</p></div>
+                    <button type="button" class="btn btn-danger-soft btn-sm" id="btn-clear-events">Очистить</button>
+                </div>
+                <hr class="divider">
+                <div class="flex items-center justify-between gap-3">
+                    <div><div class="font-semibold text-fg">Посетители</div><p class="hint">Удалить распознанных посетителей, кроме сотрудников</p></div>
+                    <button type="button" class="btn btn-danger-soft btn-sm" id="btn-clear-visitors">Очистить</button>
+                </div>
+            </div>
+        </section>
+    </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    async function loadSettings() {
-        const res = await fetch('/api/settings/');
-        const data = await res.json();
-        
-        if (data.retention_days) document.getElementById('retention_days').value = data.retention_days;
-        if (data.min_confidence) document.getElementById('min_confidence').value = data.min_confidence;
-        if (data.fight_sensitivity) document.getElementById('fight_sensitivity').value = data.fight_sensitivity;
-    }
-
-    document.getElementById('settings-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const settings = {
-            retention_days: document.getElementById('retention_days').value,
-            min_confidence: document.getElementById('min_confidence').value,
-            fight_sensitivity: document.getElementById('fight_sensitivity').value
+    (function () {
+        const { api, escapeHtml, fmt } = UI;
+        const form = document.getElementById('settings-form');
+        const SENS = {
+            low: 'Меньше ложных срабатываний: порог уверенности 0,8.',
+            medium: 'Баланс: порог уверенности 0,6 (значение по умолчанию).',
+            high: 'Ловит больше драк, но чаще ошибается: порог 0,4.',
         };
+        let saved = null;
 
-        const res = await fetch('/api/settings/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ settings })
+        const sensitivity = () => form.querySelector('input[name="fight_sensitivity"]:checked')?.value || 'medium';
+        const values = () => ({
+            retention_days: document.getElementById('retention_days').value.trim(),
+            min_confidence: document.getElementById('min_confidence').value.trim(),
+            fight_sensitivity: sensitivity(),
         });
 
-        if (res.ok) {
-            alert('Настройки успешно сохранены!');
-        } else {
-            alert('Ошибка при сохранении настроек');
+        function sync() {
+            document.getElementById('sens-hint').textContent = SENS[sensitivity()];
+            const c = Number(document.getElementById('min_confidence').value);
+            document.getElementById('conf-percent').textContent = Number.isFinite(c) && document.getElementById('min_confidence').value !== '' ? `= ${Math.round(c * 100)}%` : '';
+            const dirty = saved && JSON.stringify(values()) !== JSON.stringify(saved);
+            document.getElementById('settings-state').textContent = dirty ? 'Есть несохранённые изменения' : '';
         }
-    });
 
-    loadSettings();
+        async function load() {
+            try {
+                const data = await api('/api/settings/');
+                if (data.retention_days) document.getElementById('retention_days').value = data.retention_days;
+                if (data.min_confidence) document.getElementById('min_confidence').value = data.min_confidence;
+                const radio = form.querySelector(`input[name="fight_sensitivity"][value="${data.fight_sensitivity || 'medium'}"]`);
+                if (radio) radio.checked = true;
+                saved = values();
+                sync();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось загрузить настройки' });
+            }
+        }
+
+        async function loadDisk() {
+            try {
+                const m = await api('/api/system/metrics');
+                const pct = Math.round(m.disk.used_percent);
+                document.getElementById('disk-text').textContent = `${pct}%`;
+                document.getElementById('disk-bar').style.width = `${pct}%`;
+                document.getElementById('disk-bar').dataset.state = pct >= 90 ? 'failed' : '';
+                document.getElementById('disk-progress').setAttribute('aria-valuenow', String(pct));
+                document.getElementById('disk-meta').textContent = `Свободно ${fmt.bytes(m.disk.free)} из ${fmt.bytes(m.disk.total)} · событий в базе: ${fmt.number(m.events_total)}`;
+            } catch (_) {
+                document.getElementById('disk-meta').textContent = 'Метрики недоступны';
+            }
+        }
+
+        form.addEventListener('input', sync);
+        form.addEventListener('change', sync);
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const v = values();
+            const days = Number(v.retention_days);
+            const conf = Number(v.min_confidence);
+            const retention = document.getElementById('retention_days');
+            const confidence = document.getElementById('min_confidence');
+            retention.setAttribute('aria-invalid', String(!(Number.isInteger(days) && days >= 1)));
+            confidence.setAttribute('aria-invalid', String(v.min_confidence !== '' && !(conf >= 0 && conf <= 1)));
+            if (retention.getAttribute('aria-invalid') === 'true') { retention.focus(); UI.toast('Срок хранения — целое число дней от 1', { type: 'error' }); return; }
+            if (confidence.getAttribute('aria-invalid') === 'true') { confidence.focus(); UI.toast('Уверенность — число от 0 до 1', { type: 'error' }); return; }
+            const button = document.getElementById('btn-save');
+            UI.setBusy(button, true, 'Сохранение…');
+            try {
+                // Пустые поля не отправляем, чтобы не затирать значение на сервере пустой строкой.
+                const payload = Object.fromEntries(Object.entries(v).filter(([, value]) => value !== ''));
+                await api('/api/settings/update', { method: 'POST', json: { settings: payload } });
+                saved = v;
+                UI.toast('Настройки сохранены');
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось сохранить настройки' });
+            } finally {
+                UI.setBusy(button, false);
+                sync();
+            }
+        });
+
+        document.getElementById('btn-cleanup').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            UI.setBusy(button, true, 'Очистка…');
+            try {
+                const r = await api('/api/system/cleanup', { method: 'POST' });
+                document.getElementById('cleanup-result').innerHTML = `<div class="alert alert-success"><div>
+                    <div class="alert-title">Очистка завершена (срок ${escapeHtml(r.retention_days)} дн.)</div>
+                    <p class="text-muted">Событий: ${r.deleted_events}, снимков: ${r.deleted_snapshots}, клипов: ${r.deleted_clips}, HLS-файлов: ${r.deleted_hls_files}, проверок: ${r.deleted_detection_jobs}.</p>
+                </div></div>`;
+                loadDisk();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Очистка не удалась' });
+            } finally {
+                UI.setBusy(button, false);
+            }
+        });
+
+        document.getElementById('btn-clear-events').addEventListener('click', async () => {
+            const ok = await UI.confirm({ title: 'Удалить все события?', message: 'Будут удалены все события всех камер. Действие необратимо.', confirmText: 'Удалить все' });
+            if (!ok) return;
+            try {
+                await api('/api/events/all', { method: 'DELETE' });
+                UI.toast('Все события удалены');
+                loadDisk();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось удалить события' });
+            }
+        });
+
+        document.getElementById('btn-clear-visitors').addEventListener('click', async () => {
+            const ok = await UI.confirm({ title: 'Очистить посетителей?', message: 'Будут удалены все распознанные посетители, кроме сотрудников. События потеряют привязку к профилям.', confirmText: 'Очистить' });
+            if (!ok) return;
+            try {
+                await api('/api/visitors/clear', { method: 'POST' });
+                UI.toast('Список посетителей очищен');
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось очистить посетителей' });
+            }
+        });
+
+        load();
+        loadDisk();
+    })();
 </script>
 {% endblock %}

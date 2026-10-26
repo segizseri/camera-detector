@@ -1,433 +1,585 @@
 {% extends "base.html" %}
-{% block title %}Проверка детекций | Laptop AI Box{% endblock %}
+{% from "_ui.html" import icon, page_header %}
+{% block title %}Проверка детекций{% endblock %}
 {% block content %}
-<div class="mb-6 flex justify-between items-start gap-4">
-    <div>
-        <h1 class="text-3xl font-bold">Проверка детекций на видео</h1>
-        <p class="text-gray-400 mt-1">Вставьте ссылку YouTube или загрузите видео. Worker построит размеченную копию и покажет события с таймкодами.</p>
-    </div>
-    <div id="model-badge" class="px-3 py-2 bg-gray-700 text-sm rounded-full whitespace-nowrap">
-        <i class="fas fa-spinner fa-spin mr-2"></i>Проверка модели
-    </div>
-</div>
+{% call page_header("Проверка детекций на видео", "Загрузите видео или вставьте ссылку YouTube: воркер построит размеченную копию и покажет события с таймкодами.") %}
+    <span id="model-badge" class="badge badge-system badge-lg"><span class="spinner w-3 h-3 border-[1.5px]" aria-hidden="true"></span>Проверяем модель…</span>
+{% endcall %}
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <section class="lg:col-span-1 bg-gray-800 rounded-lg shadow-xl border border-gray-700 p-6 h-fit">
-        <h2 class="text-xl font-bold mb-5">Новое видео</h2>
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+    <form id="analysis-form" class="card" novalidate aria-labelledby="form-title">
+        <div class="card-header"><h2 class="card-title" id="form-title">{{ icon("flask", "icon-sm text-subtle") }}Новая проверка</h2></div>
+        <div class="card-body space-y-5">
+            <fieldset>
+                <legend class="label mb-2">Источник</legend>
+                <div class="seg seg-block" id="source-seg">
+                    <label><input type="radio" name="source" value="youtube" class="sr-only" checked>{{ icon("youtube", "icon-sm") }}YouTube</label>
+                    <label><input type="radio" name="source" value="upload" class="sr-only">{{ icon("upload", "icon-sm") }}Файл</label>
+                </div>
+            </fieldset>
 
-        <div class="grid grid-cols-2 gap-2 mb-5">
-            <button id="source-youtube" type="button" class="source-button bg-red-600 text-white py-2 px-3 rounded font-bold">
-                <i class="fab fa-youtube mr-2"></i>YouTube
-            </button>
-            <button id="source-upload" type="button" class="source-button bg-gray-700 hover:bg-gray-600 text-white py-2 px-3 rounded font-bold">
-                <i class="fas fa-upload mr-2"></i>Файл
-            </button>
-        </div>
-
-        <div id="youtube-fields" class="mb-5">
-            <label for="youtube-url" class="block text-sm text-gray-300 mb-2">Ссылка на YouTube</label>
-            <input id="youtube-url" type="url" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white placeholder-gray-400" placeholder="https://www.youtube.com/watch?v=...">
-            <p class="text-xs text-gray-500 mt-2">Плейлисты не загружаются — анализируется только одно видео.</p>
-        </div>
-
-        <div id="upload-fields" class="mb-5 hidden">
-            <label for="video-file" class="block text-sm text-gray-300 mb-2">Видеофайл</label>
-            <input id="video-file" type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,.m4v" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white">
-            <p id="upload-limit" class="text-xs text-gray-500 mt-2">MP4, MOV, AVI, MKV, WebM или M4V.</p>
-        </div>
-
-        <div class="mb-5">
-            <div class="flex justify-between items-center mb-2">
-                <label class="block text-sm text-gray-300">Какие детекции проверять</label>
-                <button id="select-all" type="button" class="text-xs text-blue-400 hover:text-blue-300">Выбрать все</button>
+            <div id="youtube-fields" class="field">
+                <label for="youtube-url" class="label">Ссылка на видео</label>
+                <input id="youtube-url" type="url" class="input" placeholder="https://www.youtube.com/watch?v=…" inputmode="url" autocomplete="off" spellcheck="false" aria-describedby="youtube-hint">
+                <p class="hint" id="youtube-hint">Только одно видео, плейлисты не загружаются. Серверу нужен доступ в интернет.</p>
             </div>
-            <div class="space-y-2 bg-gray-900 rounded p-3 border border-gray-700">
-                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="fight" checked><span>Драка</span></label>
-                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="bullying" checked><span>Буллинг</span></label>
-                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="theft" checked><span>Кража</span></label>
-                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="passengers" checked><span>Счетчик пассажиров</span></label>
-                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="shoplifting" checked><span>Кража из витрины</span></label>
-                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="eating" checked><span>Поедание у витрины</span></label>
+
+            <div id="upload-fields" class="field" hidden>
+                <span class="label" id="file-label">Видеофайл</span>
+                <label class="dropzone" id="dropzone">
+                    <input id="video-file" type="file" class="sr-only" accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,.m4v" aria-labelledby="file-label" aria-describedby="upload-limit">
+                    {{ icon("upload", "icon-lg text-subtle") }}
+                    <span class="text-fg font-semibold" id="file-name">Выберите файл или перетащите его сюда</span>
+                    <span class="hint" id="upload-limit">MP4, MOV, AVI, MKV, WebM или M4V.</span>
+                </label>
             </div>
-            <p class="text-xs text-gray-500 mt-2">Для счетчика на кадр наносится горизонтальная линия по центру.</p>
+
+            <fieldset>
+                <div class="flex items-center justify-between mb-2">
+                    <legend class="label">Детекторы</legend>
+                    <button id="select-all" type="button" class="link text-xs">Выбрать все</button>
+                </div>
+                <div class="rounded-lg border border-line divide-y divide-line" id="detector-checks"></div>
+                <p class="section-title mt-4 mb-2">Транспорт</p>
+                <label class="flex items-start gap-3 rounded-lg border border-line px-3 py-2.5 cursor-pointer">
+                    <input class="checkbox detector-check mt-0.5" type="checkbox" value="passengers">
+                    <span><span class="flex items-center gap-2 text-sm font-medium text-fg">{{ icon("bus", "icon-sm text-subtle") }}Подсчёт пассажиров</span>
+                    <span class="hint block">На кадр наносится горизонтальная линия по центру.</span></span>
+                </label>
+            </fieldset>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
+                <div class="field">
+                    <label for="model-key" class="label">AI-модель</label>
+                    <select id="model-key" class="select"><option value="general">Загрузка…</option></select>
+                </div>
+                <div class="field">
+                    <label for="sample-fps" class="label">Частота анализа</label>
+                    <select id="sample-fps" class="select">
+                        <option value="2">2 кадр/с — быстрее</option>
+                        <option value="5" selected>5 кадр/с — как при обучении</option>
+                        <option value="10">10 кадр/с — подробнее</option>
+                    </select>
+                </div>
+            </div>
+            <p id="model-help" class="hint -mt-2">Общая модель проверяет все классы действий.</p>
+
+            <div class="alert alert-info">{{ icon("info") }}<p>Зоны камер здесь не применяются: действия ищутся по всему кадру.</p></div>
+            <div id="form-error" class="alert alert-danger" role="alert" hidden>{{ icon("alert-circle") }}<p id="form-error-text"></p></div>
+        </div>
+        <div class="card-footer">
+            <button id="start-analysis" type="submit" class="btn btn-primary btn-lg btn-block" disabled>{{ icon("play", "icon-sm") }}Запустить анализ</button>
+        </div>
+    </form>
+
+    <div class="xl:col-span-2 space-y-4 min-w-0">
+        <div id="empty-result" class="card">
+            <div class="empty py-16">
+                <div class="empty-icon">{{ icon("film", "icon-lg") }}</div>
+                <div class="empty-title">Результат появится здесь</div>
+                <p class="empty-text">Видео обрабатывается в фоне: страницу можно оставить открытой или вернуться к проверке из истории ниже.</p>
+            </div>
         </div>
 
-        <div class="mb-5">
-            <label for="model-key" class="block text-sm text-gray-300 mb-2">AI-модель</label>
-            <select id="model-key" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white">
-                <option value="general">Загрузка списка моделей...</option>
-            </select>
-            <p id="model-help" class="text-xs text-gray-500 mt-2">Общая модель проверяет все классы действий.</p>
-        </div>
-
-        <div class="mb-5">
-            <label for="sample-fps" class="block text-sm text-gray-300 mb-2">Частота анализа</label>
-            <select id="sample-fps" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white">
-                <option value="2">2 FPS — быстрее</option>
-                <option value="5" selected>5 FPS — как при обучении</option>
-                <option value="10">10 FPS — подробнее</option>
-            </select>
-        </div>
-
-        <div id="form-error" class="hidden bg-red-900 border border-red-700 text-red-200 rounded p-3 text-sm mb-4"></div>
-        <p class="text-xs text-yellow-400 mb-3"><i class="fas fa-info-circle mr-1"></i>В офлайн-проверке ROI камеры не применяется: действия ищутся по всему кадру.</p>
-        <button id="start-analysis" type="button" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded shadow disabled:opacity-50 disabled:cursor-not-allowed">
-            <i class="fas fa-play mr-2"></i>Запустить анализ
-        </button>
-    </section>
-
-    <section class="lg:col-span-2 space-y-6">
-        <div id="empty-result" class="bg-gray-800 rounded-lg border border-gray-700 min-h-96 flex flex-col items-center justify-center text-gray-500 p-8 text-center">
-            <i class="fas fa-film text-6xl mb-4"></i>
-            <p class="text-lg">Результат анализа появится здесь</p>
-            <p class="text-sm mt-2">Видео обрабатывается в фоне — страницу можно оставить открытой.</p>
-        </div>
-
-        <div id="job-result" class="hidden space-y-6">
-            <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 p-5">
-                <div class="flex justify-between items-start gap-4 mb-3">
-                    <div>
-                        <h2 id="job-title" class="text-xl font-bold">Анализ видео</h2>
-                        <p id="job-meta" class="text-xs text-gray-500 mt-1"></p>
+        <div id="job-result" class="space-y-4 scroll-mt-20" hidden>
+            <section class="card" aria-labelledby="job-title">
+                <div class="card-body space-y-4">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <h2 id="job-title" class="text-lg font-semibold text-fg truncate">Анализ видео</h2>
+                            <p id="job-meta" class="text-sm text-subtle mt-0.5"></p>
+                        </div>
+                        <span id="job-status" class="badge badge-lg badge-system">В очереди</span>
                     </div>
-                    <span id="job-status" class="px-3 py-1 bg-gray-700 text-xs rounded-full uppercase">В очереди</span>
+                    <ol class="steps" id="job-steps" aria-label="Этапы обработки"></ol>
+                    <div>
+                        <div class="progress h-2.5" role="progressbar" aria-labelledby="job-stage" aria-valuemin="0" aria-valuemax="100" id="job-progressbar">
+                            <div id="job-progress" class="progress-bar" style="width:0%"></div>
+                        </div>
+                        <div class="flex flex-wrap justify-between gap-2 text-sm mt-2">
+                            <span id="job-stage" class="text-muted">Ожидание воркера</span>
+                            <span class="text-fg font-semibold num"><span id="job-frames" class="text-subtle font-normal mr-2"></span><span id="job-percent">0%</span></span>
+                        </div>
+                    </div>
+                    <div id="job-error" class="alert alert-danger" role="alert" hidden>{{ icon("alert-circle") }}<p id="job-error-text" class="break-words"></p></div>
                 </div>
-                <div class="w-full bg-gray-900 rounded-full h-3 overflow-hidden">
-                    <div id="job-progress" class="bg-blue-600 h-3 transition-all" style="width: 0%"></div>
-                </div>
-                <div class="flex justify-between text-sm mt-2">
-                    <span id="job-stage" class="text-gray-400">Ожидание worker</span>
-                    <span id="job-percent" class="text-gray-300">0%</span>
-                </div>
-                <div id="job-error" class="hidden bg-red-900 border border-red-700 text-red-200 rounded p-3 text-sm mt-4"></div>
-            </div>
+            </section>
 
-            <div id="video-panel" class="hidden bg-gray-800 rounded-lg shadow-xl border border-gray-700 overflow-hidden">
-                <div class="aspect-video bg-black flex items-center justify-center">
-                    <video id="result-video" controls preload="metadata" class="w-full h-full"></video>
+            <section id="video-panel" class="card overflow-hidden" hidden aria-label="Размеченное видео">
+                <div class="media-frame"><video id="result-video" controls preload="metadata"></video></div>
+                <div class="card-body space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="section-title">Таймлайн событий</h3>
+                        <span class="text-xs text-subtle num" id="timeline-time"></span>
+                    </div>
+                    <div class="timeline" id="timeline"><div class="timeline-track"><div class="timeline-progress" id="timeline-progress" style="width:0%"></div></div></div>
+                    <p class="hint">Надпись DETECTED на кадре значит, что класс прошёл порог уверенности. Синяя линия — линия подсчёта пассажиров.</p>
                 </div>
-                <div class="p-3 text-xs text-gray-500">Красная надпись DETECTED означает, что класс прошел порог уверенности. Синяя линия используется счетчиком пассажиров.</div>
-            </div>
+            </section>
 
-            <div id="summary-panel" class="hidden grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <div class="bg-gray-800 rounded border border-gray-700 p-4"><div class="text-gray-400 text-xs">Событий</div><div id="summary-events" class="text-2xl font-bold mt-1">0</div></div>
-                <div class="bg-gray-800 rounded border border-gray-700 p-4"><div class="text-gray-400 text-xs">Людей максимум</div><div id="summary-people" class="text-2xl font-bold mt-1">0</div></div>
-                <div class="bg-gray-800 rounded border border-gray-700 p-4"><div class="text-gray-400 text-xs">Пассажиры: вход</div><div id="summary-in" class="text-2xl font-bold mt-1 text-green-400">0</div></div>
-                <div class="bg-gray-800 rounded border border-gray-700 p-4"><div class="text-gray-400 text-xs">Пассажиры: выход</div><div id="summary-out" class="text-2xl font-bold mt-1 text-yellow-400">0</div></div>
-            </div>
+            <section id="summary-panel" class="grid grid-cols-2 lg:grid-cols-4 gap-3" hidden aria-label="Итоги анализа">
+                <div class="card kpi"><div class="kpi-label">Событий</div><div id="summary-events" class="kpi-value">0</div></div>
+                <div class="card kpi"><div class="kpi-label">Людей в кадре, максимум</div><div id="summary-people" class="kpi-value">0</div></div>
+                <div class="card kpi"><div class="kpi-label">Пассажиры: вход</div><div id="summary-in" class="kpi-value text-success-fg">0</div></div>
+                <div class="card kpi"><div class="kpi-label">Пассажиры: выход</div><div id="summary-out" class="kpi-value text-high-fg">0</div></div>
+            </section>
 
-            <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 p-5">
-                <h2 class="text-xl font-bold mb-4">Найденные события</h2>
-                <div id="events-empty" class="text-gray-500 text-sm py-6 text-center">Пока событий нет.</div>
-                <div id="events-list" class="space-y-3"></div>
-            </div>
+            <section class="card" aria-labelledby="events-title">
+                <div class="card-header">
+                    <h2 class="card-title" id="events-title">{{ icon("bell", "icon-sm text-subtle") }}Найденные события</h2>
+                    <span class="text-xs text-subtle">Нажмите на таймкод, чтобы перейти к моменту</span>
+                </div>
+                <div id="events-empty" class="empty"><div class="empty-icon">{{ icon("inbox", "icon-lg") }}</div><div class="empty-title">Пока событий нет</div></div>
+                <ol id="events-list" class="divide-y divide-line"></ol>
+            </section>
         </div>
 
-        <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 p-5">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold">Последние проверки</h2>
-                <button id="refresh-history" type="button" class="text-blue-400 hover:text-blue-300 text-sm"><i class="fas fa-sync-alt mr-1"></i>Обновить</button>
+        <section class="card" aria-labelledby="history-title">
+            <div class="card-header">
+                <h2 class="card-title" id="history-title">{{ icon("history", "icon-sm text-subtle") }}Последние проверки</h2>
+                <button id="refresh-history" type="button" class="btn btn-ghost btn-sm">{{ icon("refresh", "icon-sm") }}Обновить</button>
             </div>
-            <div id="history-list" class="space-y-2 text-sm text-gray-400">Загрузка...</div>
-        </div>
-    </section>
+            <ul id="history-list" class="divide-y divide-line">
+                <li class="px-5 py-3" aria-hidden="true"><div class="skeleton skeleton-text w-1/2"></div></li>
+                <li class="px-5 py-3" aria-hidden="true"><div class="skeleton skeleton-text w-1/3"></div></li>
+            </ul>
+        </section>
+    </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    const stageLabels = {
-        queued: 'Ожидание AI worker',
-        preparing: 'Подготовка задания',
-        downloading: 'Загрузка с YouTube',
-        opening: 'Открытие видео',
-        loading_models: 'Загрузка AI-моделей',
-        analyzing: 'Распознавание поз и действий',
-        encoding: 'Подготовка видео результата',
-        completed: 'Анализ завершен',
-        failed: 'Ошибка анализа'
-    };
-    const statusLabels = { queued: 'В очереди', processing: 'Обработка', completed: 'Готово', failed: 'Ошибка' };
-    let sourceType = 'youtube';
-    let currentJobId = null;
-    let pollTimer = null;
-    let modelAvailable = false;
-    let availableModels = {};
-    let renderedJobId = null;
+    (function () {
+        const { escapeHtml, icon, fmt } = UI;
+        const ENDPOINTS = { youtube: '/api/detection-tests/youtube', upload: '/api/detection-tests/upload' };
+        const STAGES = [
+            ['queued', 'Очередь'],
+            ['preparing', 'Подготовка'],
+            ['downloading', 'Загрузка видео'],
+            ['opening', 'Открытие'],
+            ['loading_models', 'Модели'],
+            ['analyzing', 'Анализ'],
+            ['encoding', 'Видео результата'],
+            ['completed', 'Готово'],
+        ];
+        const STAGE_LABELS = {
+            queued: 'Ожидание AI-воркера',
+            preparing: 'Подготовка задания',
+            downloading: 'Загрузка с YouTube',
+            opening: 'Открытие видео',
+            loading_models: 'Загрузка AI-моделей',
+            analyzing: 'Распознавание поз и действий',
+            encoding: 'Подготовка видео результата',
+            completed: 'Анализ завершён',
+            failed: 'Ошибка анализа',
+        };
+        const STATUS = {
+            queued: ['В очереди', 'badge-system'],
+            processing: ['Обработка', 'badge-info'],
+            completed: ['Готово', 'badge-success'],
+            failed: ['Ошибка', 'badge-critical'],
+        };
+        let currentJobId = null;
+        let pollTimer = null;
+        let availableModels = {};
+        let modelAvailable = false;
+        let renderedJobId = null;
+        let currentJob = null;
+        let objectUrl = null;
+        let seekablePromise = null;
 
-    function escapeHtml(value) {
-        return String(value ?? '')
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#039;');
-    }
+        /* ---------- Форма ---------- */
+        const checks = document.getElementById('detector-checks');
+        checks.innerHTML = UI.detectors.map((d) => `<label class="flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-surface-2 first:rounded-t-lg last:rounded-b-lg">
+            <input class="checkbox detector-check mt-0.5" type="checkbox" value="${escapeHtml(d.legacy_batch_key)}" checked>
+            <span class="flex items-center gap-2 text-sm font-medium text-fg"><span class="${UI.SEVERITY[d.severity].text}">${icon(d.icon, 'icon-sm')}</span>${escapeHtml(d.title)}</span>
+        </label>`).join('');
 
-    function formatTime(seconds) {
-        const safe = Math.max(0, Number(seconds) || 0);
-        const minutes = Math.floor(safe / 60);
-        const rest = Math.floor(safe % 60);
-        return `${minutes}:${String(rest).padStart(2, '0')}`;
-    }
+        const source = () => document.querySelector('input[name="source"]:checked').value;
+        const detectorChecks = () => [...document.querySelectorAll('.detector-check')];
 
-    function setSource(type) {
-        sourceType = type;
-        document.getElementById('youtube-fields').classList.toggle('hidden', type !== 'youtube');
-        document.getElementById('upload-fields').classList.toggle('hidden', type !== 'upload');
-        document.getElementById('source-youtube').className = type === 'youtube'
-            ? 'source-button bg-red-600 text-white py-2 px-3 rounded font-bold'
-            : 'source-button bg-gray-700 hover:bg-gray-600 text-white py-2 px-3 rounded font-bold';
-        document.getElementById('source-upload').className = type === 'upload'
-            ? 'source-button bg-blue-600 text-white py-2 px-3 rounded font-bold'
-            : 'source-button bg-gray-700 hover:bg-gray-600 text-white py-2 px-3 rounded font-bold';
-    }
-
-    function showFormError(message) {
-        const box = document.getElementById('form-error');
-        box.textContent = message;
-        box.classList.remove('hidden');
-    }
-
-    async function parseResponse(response) {
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.detail || `Ошибка HTTP ${response.status}`);
-        return data;
-    }
-
-    async function loadSystem() {
-        try {
-            const data = await parseResponse(await fetch('/api/detection-tests/system'));
-            availableModels = data.models || { general: data.model };
-            const modelSelect = document.getElementById('model-key');
-            modelSelect.innerHTML = Object.entries(availableModels).map(([key, model]) =>
-                `<option value="${escapeHtml(key)}" ${model.available ? '' : 'disabled'}>${escapeHtml(model.label || model.filename)}${model.available ? '' : ' — нет файла'}</option>`
-            ).join('');
-            const firstAvailable = Object.entries(availableModels).find(([, model]) => model.available);
-            if (firstAvailable) modelSelect.value = availableModels.general?.available ? 'general' : firstAvailable[0];
-            updateModelAvailability();
-            document.getElementById('upload-limit').textContent = `MP4, MOV, AVI, MKV, WebM или M4V, до ${data.max_upload_mb} МБ и ${Math.floor(data.max_duration_seconds / 60)} минут.`;
-        } catch (error) {
-            showFormError(error.message);
+        function syncSource() {
+            document.getElementById('youtube-fields').hidden = source() !== 'youtube';
+            document.getElementById('upload-fields').hidden = source() !== 'upload';
         }
-    }
 
-    function updateModelAvailability() {
-        const modelKey = document.getElementById('model-key').value;
-        const selectedModel = availableModels[modelKey];
-        modelAvailable = Boolean(selectedModel?.available);
-        const badge = document.getElementById('model-badge');
-        const start = document.getElementById('start-analysis');
-        const help = document.getElementById('model-help');
-        if (modelAvailable) {
-            badge.className = 'px-3 py-2 bg-green-900 text-green-300 border border-green-700 text-sm rounded-full whitespace-nowrap';
-            badge.innerHTML = `<i class="fas fa-check-circle mr-2"></i>${escapeHtml(selectedModel.label || 'Модель загружена')}`;
-            start.disabled = false;
-        } else {
-            badge.className = 'px-3 py-2 bg-red-900 text-red-300 border border-red-700 text-sm rounded-full whitespace-nowrap';
-            badge.innerHTML = '<i class="fas fa-times-circle mr-2"></i>Модель не обучена';
-            start.disabled = true;
+        function showFormError(message) {
+            document.getElementById('form-error-text').textContent = message;
+            document.getElementById('form-error').hidden = false;
         }
-        help.textContent = modelKey === 'eating'
-            ? 'Исследовательский кандидат распознает только Normal и Eating; остальные классы этой моделью не проверяются.'
-            : 'Общая модель проверяет все классы действий.';
-        if (modelKey === 'eating') {
-            document.querySelectorAll('.detector-check').forEach(item => {
-                if (!['eating', 'passengers'].includes(item.value)) item.checked = false;
-            });
-            document.querySelector('.detector-check[value="eating"]').checked = true;
+
+        function syncSelectAll() {
+            const all = detectorChecks();
+            document.getElementById('select-all').textContent = all.every((c) => c.checked) ? 'Снять все' : 'Выбрать все';
         }
-    }
 
-    async function startAnalysis() {
-        document.getElementById('form-error').classList.add('hidden');
-        if (!modelAvailable) return showFormError('Обученная модель не найдена.');
-        const detectors = [...document.querySelectorAll('.detector-check:checked')].map(item => item.value);
-        if (!detectors.length) return showFormError('Выберите хотя бы один детектор.');
-
-        const button = document.getElementById('start-analysis');
-        button.disabled = true;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Создание задания...';
-        try {
-            let response;
-            if (sourceType === 'youtube') {
-                const url = document.getElementById('youtube-url').value.trim();
-                if (!url) throw new Error('Вставьте ссылку на YouTube.');
-                response = await fetch('/api/detection-tests/youtube', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url, detectors, model_key: document.getElementById('model-key').value, sample_fps: Number(document.getElementById('sample-fps').value) })
-                });
-            } else {
-                const file = document.getElementById('video-file').files[0];
-                if (!file) throw new Error('Выберите видеофайл.');
-                const body = new FormData();
-                body.append('video', file);
-                body.append('detectors', JSON.stringify(detectors));
-                body.append('model_key', document.getElementById('model-key').value);
-                body.append('sample_fps', document.getElementById('sample-fps').value);
-                response = await fetch('/api/detection-tests/upload', { method: 'POST', body });
-            }
-            const job = await parseResponse(response);
-            currentJobId = job.id;
-            renderJob(job);
-            startPolling();
-            loadHistory();
-        } catch (error) {
-            showFormError(error.message);
-        } finally {
-            button.disabled = !modelAvailable;
-            button.innerHTML = '<i class="fas fa-play mr-2"></i>Запустить анализ';
-        }
-    }
-
-    function startPolling() {
-        if (pollTimer) clearInterval(pollTimer);
-        pollTimer = setInterval(async () => {
-            if (!currentJobId) return;
+        async function loadSystem() {
             try {
-                const job = await parseResponse(await fetch(`/api/detection-tests/${currentJobId}`));
-                renderJob(job);
-                if (job.status === 'completed' || job.status === 'failed') {
-                    clearInterval(pollTimer);
-                    pollTimer = null;
-                    loadHistory();
-                }
+                const data = await UI.api('/api/detection-tests/system');
+                availableModels = data.models || { general: data.model };
+                const select = document.getElementById('model-key');
+                select.innerHTML = Object.entries(availableModels).map(([key, model]) =>
+                    `<option value="${escapeHtml(key)}" ${model.available ? '' : 'disabled'}>${escapeHtml(model.label || model.filename)}${model.available ? '' : ' — нет файла'}</option>`).join('');
+                const first = Object.entries(availableModels).find(([, model]) => model.available);
+                if (first) select.value = availableModels.general?.available ? 'general' : first[0];
+                document.getElementById('upload-limit').textContent = `MP4, MOV, AVI, MKV, WebM или M4V, до ${data.max_upload_mb} МБ и ${Math.floor(data.max_duration_seconds / 60)} мин.`;
+                updateModel();
             } catch (error) {
-                console.error(error);
+                showFormError(error.message);
+                document.getElementById('model-badge').className = 'badge badge-critical badge-lg';
+                document.getElementById('model-badge').innerHTML = `${icon('alert-circle', 'icon-xs')}Нет связи с сервером`;
             }
-        }, 2000);
-    }
-
-    function renderJob(job) {
-        if (renderedJobId !== job.id) {
-            const video = document.getElementById('result-video');
-            video.pause();
-            video.removeAttribute('src');
-            delete video.dataset.url;
-            video.load();
-            document.getElementById('video-panel').classList.add('hidden');
-            document.getElementById('summary-panel').classList.add('hidden');
-            document.getElementById('events-list').innerHTML = '';
-            document.getElementById('events-empty').classList.remove('hidden');
-            renderedJobId = job.id;
-        }
-        document.getElementById('empty-result').classList.add('hidden');
-        document.getElementById('job-result').classList.remove('hidden');
-        document.getElementById('job-title').textContent = job.original_filename || 'YouTube video';
-        const duration = job.duration_seconds ? ` • ${formatTime(job.duration_seconds)}` : '';
-        const modelLabel = availableModels[job.model_key]?.label || job.model_key || 'general';
-        document.getElementById('job-meta').textContent = `Задание ${job.id.slice(0, 8)} • ${modelLabel} • ${job.sample_fps} FPS${duration}`;
-        const status = document.getElementById('job-status');
-        status.textContent = statusLabels[job.status] || job.status;
-        status.className = 'px-3 py-1 text-xs rounded-full uppercase ' + (
-            job.status === 'completed' ? 'bg-green-700 text-white' :
-            job.status === 'failed' ? 'bg-red-700 text-white' :
-            job.status === 'processing' ? 'bg-blue-700 text-white' : 'bg-gray-700'
-        );
-        const progress = Math.max(0, Math.min(100, Number(job.progress) || 0));
-        document.getElementById('job-progress').style.width = `${progress}%`;
-        document.getElementById('job-progress').className = `h-3 transition-all ${job.status === 'failed' ? 'bg-red-600' : 'bg-blue-600'}`;
-        document.getElementById('job-percent').textContent = `${Math.round(progress)}%`;
-        document.getElementById('job-stage').textContent = stageLabels[job.stage] || job.stage;
-        const errorBox = document.getElementById('job-error');
-        if (job.error) {
-            errorBox.textContent = job.error;
-            errorBox.classList.remove('hidden');
-        } else {
-            errorBox.classList.add('hidden');
         }
 
-        if (job.video_url) {
-            const video = document.getElementById('result-video');
-            if (video.dataset.url !== job.video_url) {
-                video.src = job.video_url;
-                video.dataset.url = job.video_url;
+        function updateModel() {
+            const key = document.getElementById('model-key').value;
+            const model = availableModels[key];
+            modelAvailable = Boolean(model?.available);
+            const badge = document.getElementById('model-badge');
+            badge.className = `badge badge-lg ${modelAvailable ? 'badge-success' : 'badge-critical'}`;
+            badge.innerHTML = modelAvailable ? `${icon('check-circle', 'icon-xs')}${escapeHtml(model.label || 'Модель загружена')}` : `${icon('alert-circle', 'icon-xs')}Модель не обучена`;
+            document.getElementById('start-analysis').disabled = !modelAvailable;
+            document.getElementById('model-help').textContent = key === 'eating'
+                ? 'Исследовательский кандидат различает только «норма» и «поедание»; остальные детекторы этой моделью не проверяются.'
+                : 'Общая модель проверяет все классы действий.';
+            if (key === 'eating') {
+                detectorChecks().forEach((item) => { if (!['eating', 'passengers'].includes(item.value)) item.checked = false; });
+                const eating = document.querySelector('.detector-check[value="eating"]');
+                if (eating) eating.checked = true;
+            }
+            syncSelectAll();
+        }
+
+        async function startAnalysis(event) {
+            event.preventDefault();
+            document.getElementById('form-error').hidden = true;
+            if (!modelAvailable) return showFormError('Обученная модель не найдена. Обучите её в разделе «AI и обучение».');
+            const detectors = detectorChecks().filter((c) => c.checked).map((c) => c.value);
+            if (!detectors.length) return showFormError('Выберите хотя бы один детектор.');
+            const button = document.getElementById('start-analysis');
+            UI.setBusy(button, true, 'Создание задания…');
+            try {
+                let response;
+                const modelKey = document.getElementById('model-key').value;
+                const fps = document.getElementById('sample-fps').value;
+                if (source() === 'youtube') {
+                    const url = document.getElementById('youtube-url').value.trim();
+                    if (!url) throw new Error('Вставьте ссылку на видео YouTube.');
+                    response = await UI.api(ENDPOINTS.youtube, { method: 'POST', json: { url, detectors, model_key: modelKey, sample_fps: Number(fps) } });
+                } else {
+                    const file = document.getElementById('video-file').files[0];
+                    if (!file) throw new Error('Выберите видеофайл.');
+                    const body = new FormData();
+                    body.append('video', file);
+                    body.append('detectors', JSON.stringify(detectors));
+                    body.append('model_key', modelKey);
+                    body.append('sample_fps', fps);
+                    response = await UI.api(ENDPOINTS.upload, { method: 'POST', body });
+                }
+                currentJobId = response.id;
+                renderJob(response);
+                startPolling();
+                loadHistory();
+                UI.toast('Задание поставлено в очередь');
+                if (window.matchMedia('(max-width: 1279px)').matches) document.getElementById('job-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (error) {
+                showFormError(error.message);
+            } finally {
+                UI.setBusy(button, false);
+                button.disabled = !modelAvailable;
+            }
+        }
+
+        /* ---------- Задание ---------- */
+        function startPolling() {
+            clearInterval(pollTimer);
+            pollTimer = setInterval(async () => {
+                if (!currentJobId || document.hidden) return;
+                try {
+                    const job = await UI.api(`/api/detection-tests/${encodeURIComponent(currentJobId)}`);
+                    renderJob(job);
+                    if (job.status === 'completed' || job.status === 'failed') {
+                        clearInterval(pollTimer);
+                        pollTimer = null;
+                        loadHistory();
+                        if (job.status === 'completed') UI.toast(`Найдено событий: ${job.results?.event_count || 0}`, { title: 'Анализ завершён' });
+                    }
+                } catch (_) { /* следующая попытка через 2 с */ }
+            }, 2000);
+        }
+
+        function renderSteps(job) {
+            const stages = STAGES.filter(([key]) => key !== 'downloading' || job.source_type === 'youtube');
+            const failed = job.status === 'failed';
+            let index = stages.findIndex(([key]) => key === job.stage);
+            if (job.status === 'completed') index = stages.length - 1;
+            if (failed && index < 0) index = Math.max(0, stages.findIndex(([key]) => key === 'analyzing'));
+            document.getElementById('job-steps').innerHTML = stages.map(([key, label], i) => {
+                let state = '';
+                if (i < index || (job.status === 'completed' && i === index)) state = 'done';
+                else if (i === index) state = failed ? 'failed' : 'active';
+                const dot = state === 'done' ? icon('check', 'icon-xs') : state === 'failed' ? icon('x', 'icon-xs') : '';
+                return `<li class="step" data-state="${state}" ${state === 'active' ? 'aria-current="step"' : ''}><span class="step-dot">${dot}</span>${label}</li>`;
+            }).join('');
+        }
+
+        function renderJob(job) {
+            currentJob = job;
+            if (renderedJobId !== job.id) {
+                const video = document.getElementById('result-video');
+                video.pause();
+                video.removeAttribute('src');
+                delete video.dataset.url;
                 video.load();
+                resetSeekable();
+                document.getElementById('video-panel').hidden = true;
+                document.getElementById('summary-panel').hidden = true;
+                renderedJobId = job.id;
+                highlightHistory();
             }
-            document.getElementById('video-panel').classList.remove('hidden');
-        }
-
-        const results = job.results || {};
-        if (job.status === 'completed' || results.event_count !== undefined) {
-            document.getElementById('summary-panel').classList.remove('hidden');
-            document.getElementById('summary-events').textContent = results.event_count || 0;
-            document.getElementById('summary-people').textContent = results.max_people || 0;
-            document.getElementById('summary-in').textContent = results.passenger_counts?.in || 0;
-            document.getElementById('summary-out').textContent = results.passenger_counts?.out || 0;
-        }
-        renderEvents(results.events || []);
-    }
-
-    function renderEvents(events) {
-        const list = document.getElementById('events-list');
-        document.getElementById('events-empty').classList.toggle('hidden', events.length > 0);
-        list.innerHTML = events.map(event => {
-            const confidence = `${Math.round((Number(event.confidence) || 0) * 100)}%`;
-            const snapshot = event.snapshot_url
-                ? `<a href="${escapeHtml(event.snapshot_url)}" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm"><i class="fas fa-image mr-1"></i>Снимок</a>`
+            document.getElementById('empty-result').hidden = true;
+            document.getElementById('job-result').hidden = false;
+            document.getElementById('job-title').textContent = job.original_filename || 'Видео YouTube';
+            const model = availableModels[job.model_key]?.label || job.model_key || 'general';
+            const parts = [`Задание ${job.id.slice(0, 8)}`, model, `${job.sample_fps} кадр/с`];
+            if (job.duration_seconds) parts.push(`длительность ${fmt.duration(job.duration_seconds)}`);
+            if (job.created_at) parts.push(fmt.dateTime(job.created_at));
+            document.getElementById('job-meta').textContent = parts.join(' · ');
+            const [statusLabel, statusClass] = STATUS[job.status] || [job.status, 'badge-system'];
+            const status = document.getElementById('job-status');
+            status.className = `badge badge-lg ${statusClass}`;
+            status.innerHTML = job.status === 'processing' ? `<span class="spinner w-3 h-3 border-[1.5px]" aria-hidden="true"></span>${statusLabel}` : statusLabel;
+            renderSteps(job);
+            const progress = Math.max(0, Math.min(100, Number(job.progress) || 0));
+            const bar = document.getElementById('job-progress');
+            bar.style.width = `${progress}%`;
+            bar.dataset.state = job.status === 'failed' ? 'failed' : job.status === 'completed' ? 'completed' : '';
+            bar.dataset.active = String(job.status === 'processing');
+            document.getElementById('job-progressbar').setAttribute('aria-valuenow', String(Math.round(progress)));
+            document.getElementById('job-percent').textContent = `${Math.round(progress)}%`;
+            document.getElementById('job-stage').textContent = STAGE_LABELS[job.stage] || job.stage;
+            document.getElementById('job-frames').textContent = job.processed_frames
+                ? `кадров ${fmt.number(job.processed_frames)}${job.total_frames ? ` из ~${fmt.number(job.total_frames)}` : ''}`
                 : '';
-            return `<div class="bg-gray-900 border border-gray-700 rounded p-4 flex justify-between items-center gap-4">
-                <div>
-                    <div class="font-bold text-red-300">${escapeHtml(event.label)}</div>
-                    <div class="text-xs text-gray-500 mt-1">Уверенность ${confidence}${event.track_id !== null && event.track_id !== undefined ? ` • track ${escapeHtml(event.track_id)}` : ''}</div>
-                </div>
-                <div class="flex items-center gap-4 whitespace-nowrap">
-                    ${snapshot}
-                    <button type="button" data-seek="${Number(event.timestamp_seconds) || 0}" class="seek-event bg-blue-700 hover:bg-blue-600 text-white rounded px-3 py-2 text-sm"><i class="fas fa-play mr-1"></i>${formatTime(event.timestamp_seconds)}</button>
-                </div>
-            </div>`;
-        }).join('');
-        document.querySelectorAll('.seek-event').forEach(button => button.addEventListener('click', () => seekTo(Number(button.dataset.seek))));
-    }
+            document.getElementById('job-error').hidden = !job.error;
+            document.getElementById('job-error-text').textContent = job.error || '';
 
-    function seekTo(seconds) {
-        const video = document.getElementById('result-video');
-        if (!video.src) return;
-        video.currentTime = seconds;
-        video.play().catch(() => {});
-        video.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-
-    async function openJob(jobId) {
-        currentJobId = jobId;
-        try {
-            const job = await parseResponse(await fetch(`/api/detection-tests/${jobId}`));
-            renderJob(job);
-            if (job.status === 'queued' || job.status === 'processing') startPolling();
-        } catch (error) {
-            showFormError(error.message);
-        }
-    }
-
-    async function loadHistory() {
-        const container = document.getElementById('history-list');
-        try {
-            const jobs = await parseResponse(await fetch('/api/detection-tests/?limit=10'));
-            if (!jobs.length) {
-                container.textContent = 'Проверок еще нет.';
-                return;
+            if (job.video_url) {
+                const video = document.getElementById('result-video');
+                if (video.dataset.url !== job.video_url) {
+                    video.src = job.video_url;
+                    video.dataset.url = job.video_url;
+                    video.load();
+                }
+                document.getElementById('video-panel').hidden = false;
             }
-            container.innerHTML = jobs.map(job => `<button type="button" data-job-id="${escapeHtml(job.id)}" class="history-job w-full text-left bg-gray-900 hover:bg-gray-700 border border-gray-700 rounded p-3 flex justify-between items-center gap-3">
-                <span class="truncate"><i class="fas ${job.source_type === 'youtube' ? 'fa-link' : 'fa-file-video'} mr-2 text-gray-500"></i>${escapeHtml(job.original_filename || 'YouTube video')}</span>
-                <span class="whitespace-nowrap ${job.status === 'completed' ? 'text-green-400' : job.status === 'failed' ? 'text-red-400' : 'text-blue-400'}">${escapeHtml(statusLabels[job.status] || job.status)} • ${Math.round(job.progress || 0)}%</span>
-            </button>`).join('');
-            document.querySelectorAll('.history-job').forEach(button => button.addEventListener('click', () => openJob(button.dataset.jobId)));
-        } catch (error) {
-            container.textContent = error.message;
+
+            const results = job.results || {};
+            if (job.status === 'completed' || results.event_count !== undefined) {
+                document.getElementById('summary-panel').hidden = false;
+                document.getElementById('summary-events').textContent = results.event_count || 0;
+                document.getElementById('summary-people').textContent = results.max_people || 0;
+                document.getElementById('summary-in').textContent = results.passenger_counts?.in || 0;
+                document.getElementById('summary-out').textContent = results.passenger_counts?.out || 0;
+                const showPassengers = (job.detectors || []).includes('passengers');
+                document.getElementById('summary-in').closest('.card').hidden = !showPassengers;
+                document.getElementById('summary-out').closest('.card').hidden = !showPassengers;
+            }
+            renderEvents(results.events || []);
+            renderTimeline();
         }
-    }
 
-    document.getElementById('source-youtube').addEventListener('click', () => setSource('youtube'));
-    document.getElementById('source-upload').addEventListener('click', () => setSource('upload'));
-    document.getElementById('start-analysis').addEventListener('click', startAnalysis);
-    document.getElementById('model-key').addEventListener('change', updateModelAvailability);
-    document.getElementById('refresh-history').addEventListener('click', loadHistory);
-    document.getElementById('select-all').addEventListener('click', () => {
-        const checks = [...document.querySelectorAll('.detector-check')];
-        const shouldCheck = checks.some(item => !item.checked);
-        checks.forEach(item => { item.checked = shouldCheck; });
-    });
+        function eventDuration() {
+            const video = document.getElementById('result-video');
+            return (Number.isFinite(video.duration) && video.duration > 0) ? video.duration : (currentJob?.duration_seconds || 0);
+        }
 
-    loadSystem();
-    loadHistory();
+        function renderEvents(events) {
+            document.getElementById('events-empty').hidden = events.length > 0;
+            document.getElementById('events-list').innerHTML = events.map((event, index) => {
+                const meta = UI.eventMeta(event.event_type);
+                const label = UI.EVENT_TYPES[event.event_type] ? meta.label : (event.label || meta.label);
+                const time = Number(event.timestamp_seconds) || 0;
+                return `<li class="flex items-center gap-3 px-5 py-3">
+                    <span class="sev-bar bg-current self-stretch ${UI.SEVERITY[meta.severity].text}" aria-hidden="true"></span>
+                    <button type="button" class="btn btn-secondary btn-sm num shrink-0" data-seek="${time}" aria-label="Перейти к ${fmt.duration(time)}: ${escapeHtml(label)}">${icon('play', 'icon-xs')}${fmt.duration(time)}</button>
+                    <span class="min-w-0 flex-1">
+                        <span class="flex flex-wrap items-center gap-2"><span class="badge ${UI.SEVERITY[meta.severity].badge}">${icon(meta.icon, 'icon-xs')}${escapeHtml(label)}</span></span>
+                        <span class="block text-xs text-subtle mt-1">Уверенность ${fmt.percent(event.confidence)}${event.track_id !== null && event.track_id !== undefined ? ` · трек ${escapeHtml(event.track_id)}` : ''}</span>
+                    </span>
+                    ${event.snapshot_url ? `<button type="button" class="relative w-20 aspect-video rounded-md overflow-hidden border border-line bg-surface-2 shrink-0" data-snapshot="${index}" aria-label="Открыть снимок события ${index + 1}">
+                        <img src="${escapeHtml(event.snapshot_url)}" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover"></button>` : ''}
+                </li>`;
+            }).join('');
+        }
+
+        function renderTimeline() {
+            const timeline = document.getElementById('timeline');
+            const events = currentJob?.results?.events || [];
+            const duration = eventDuration();
+            timeline.querySelectorAll('.timeline-marker').forEach((m) => m.remove());
+            if (!duration) return;
+            events.forEach((event) => {
+                const meta = UI.eventMeta(event.event_type);
+                const t = Number(event.timestamp_seconds) || 0;
+                const marker = document.createElement('button');
+                marker.type = 'button';
+                marker.className = `timeline-marker ${UI.SEVERITY[meta.severity].text}`;
+                marker.style.left = `calc(0.75rem + (100% - 1.5rem) * ${Math.min(1, t / duration)})`;
+                marker.dataset.seek = String(t);
+                marker.title = `${fmt.duration(t)} — ${meta.label}`;
+                marker.setAttribute('aria-label', `${meta.label}, ${fmt.duration(t)}`);
+                timeline.appendChild(marker);
+            });
+        }
+
+        function resetSeekable() {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            objectUrl = null;
+            seekablePromise = null;
+        }
+
+        // /media отдаётся без поддержки HTTP Range, и браузер не может перематывать такое видео.
+        // Тогда загружаем файл целиком и проигрываем из памяти: перемотка работает без изменений на сервере.
+        function ensureSeekable() {
+            const video = document.getElementById('result-video');
+            const url = video.dataset.url;
+            if (!url) return Promise.resolve();
+            const ranges = video.seekable;
+            if (objectUrl || (ranges.length && video.duration && ranges.end(ranges.length - 1) >= video.duration - 0.5)) return Promise.resolve();
+            if (seekablePromise) return seekablePromise;
+            seekablePromise = (async () => {
+                const controller = new AbortController();
+                const response = await fetch(url, { signal: controller.signal });
+                const size = Number(response.headers.get('content-length') || 0);
+                if (!response.ok || size > 300 * 1024 * 1024) { controller.abort(); return; }
+                const blob = await response.blob();
+                if (video.dataset.url !== url) return;
+                const time = video.currentTime;
+                const playing = !video.paused;
+                objectUrl = URL.createObjectURL(blob);
+                video.src = objectUrl;
+                await new Promise((resolve) => video.addEventListener('loadedmetadata', resolve, { once: true }));
+                video.currentTime = time;
+                if (playing) video.play().catch(() => {});
+            })().catch(() => {});
+            return seekablePromise;
+        }
+
+        async function seekTo(seconds) {
+            const video = document.getElementById('result-video');
+            if (!video.getAttribute('src')) return;
+            document.getElementById('video-panel').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await ensureSeekable();
+            video.currentTime = seconds;
+            video.play().catch(() => {});
+        }
+
+        const video = document.getElementById('result-video');
+        video.addEventListener('loadedmetadata', () => {
+            renderTimeline();
+            if (!objectUrl && (currentJob?.results?.events || []).length) ensureSeekable();
+        });
+        video.addEventListener('timeupdate', () => {
+            const duration = eventDuration();
+            document.getElementById('timeline-progress').style.width = duration ? `${Math.min(100, (video.currentTime / duration) * 100)}%` : '0%';
+            document.getElementById('timeline-time').textContent = duration ? `${fmt.duration(video.currentTime)} / ${fmt.duration(duration)}` : '';
+        });
+
+        document.addEventListener('click', (event) => {
+            const seek = event.target.closest('[data-seek]');
+            if (seek) seekTo(Number(seek.dataset.seek));
+            const snap = event.target.closest('[data-snapshot]');
+            if (snap) {
+                const e = currentJob.results.events[Number(snap.dataset.snapshot)];
+                UI.openImage(e.snapshot_url, `${UI.eventMeta(e.event_type).label}, ${fmt.duration(e.timestamp_seconds)}`);
+            }
+        });
+
+        /* ---------- История ---------- */
+        function highlightHistory() {
+            document.querySelectorAll('[data-job-id]').forEach((b) => {
+                if (b.dataset.jobId === currentJobId) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+            });
+        }
+
+        async function openJob(jobId) {
+            currentJobId = jobId;
+            try {
+                const job = await UI.api(`/api/detection-tests/${encodeURIComponent(jobId)}`);
+                renderJob(job);
+                if (job.status === 'queued' || job.status === 'processing') startPolling();
+                document.getElementById('job-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось открыть проверку' });
+            }
+        }
+
+        async function loadHistory() {
+            const container = document.getElementById('history-list');
+            try {
+                const jobs = await UI.api('/api/detection-tests/?limit=10');
+                if (!jobs.length) {
+                    container.innerHTML = `<li>${UI.emptyState({ iconName: 'history', title: 'Проверок ещё не было', text: 'Запустите первую проверку слева.' })}</li>`;
+                    return;
+                }
+                container.innerHTML = jobs.map((job) => {
+                    const [label, cls] = STATUS[job.status] || [job.status, 'badge-system'];
+                    return `<li><button type="button" data-job-id="${escapeHtml(job.id)}" class="w-full text-left flex items-center gap-3 px-5 py-3 hover:bg-surface-2 aria-[current=true]:bg-primary-soft transition-colors">
+                        <span class="text-subtle">${icon(job.source_type === 'youtube' ? 'youtube' : 'film', 'icon-sm')}</span>
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-sm font-medium text-fg truncate">${escapeHtml(job.original_filename || 'Видео YouTube')}</span>
+                            <span class="block text-xs text-subtle">${escapeHtml(fmt.dateTime(job.created_at))}${job.results?.event_count !== undefined ? ` · событий ${job.results.event_count}` : ''}</span>
+                        </span>
+                        <span class="badge badge-sm ${cls}">${escapeHtml(label)}${job.status === 'processing' ? ` · ${Math.round(job.progress || 0)}%` : ''}</span>
+                    </button></li>`;
+                }).join('');
+                highlightHistory();
+            } catch (error) {
+                container.innerHTML = `<li>${UI.errorState(error.message)}</li>`;
+            }
+        }
+
+        /* ---------- Обработчики ---------- */
+        document.getElementById('source-seg').addEventListener('change', syncSource);
+        document.getElementById('analysis-form').addEventListener('submit', startAnalysis);
+        document.getElementById('model-key').addEventListener('change', updateModel);
+        document.getElementById('detector-checks').addEventListener('change', syncSelectAll);
+        document.getElementById('refresh-history').addEventListener('click', loadHistory);
+        document.getElementById('history-list').addEventListener('click', (event) => {
+            if (event.target.closest('[data-retry]')) { loadHistory(); return; }
+            const job = event.target.closest('[data-job-id]');
+            if (job) openJob(job.dataset.jobId);
+        });
+        document.getElementById('select-all').addEventListener('click', () => {
+            const all = detectorChecks();
+            const check = all.some((c) => !c.checked);
+            all.forEach((c) => { c.checked = check; });
+            syncSelectAll();
+        });
+
+        const fileInput = document.getElementById('video-file');
+        const dropzone = document.getElementById('dropzone');
+        const showFile = () => {
+            const file = fileInput.files[0];
+            document.getElementById('file-name').textContent = file ? `${file.name} · ${fmt.bytes(file.size)}` : 'Выберите файл или перетащите его сюда';
+        };
+        fileInput.addEventListener('change', showFile);
+        ['dragenter', 'dragover'].forEach((type) => dropzone.addEventListener(type, (e) => { e.preventDefault(); dropzone.dataset.dragover = 'true'; }));
+        ['dragleave', 'drop'].forEach((type) => dropzone.addEventListener(type, () => { dropzone.dataset.dragover = 'false'; }));
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                showFile();
+            }
+        });
+
+        syncSource();
+        syncSelectAll();
+        loadSystem();
+        loadHistory();
+    })();
 </script>
 {% endblock %}

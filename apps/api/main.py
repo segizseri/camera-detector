@@ -158,6 +158,10 @@ async def webhooks_page(request: Request):
 async def settings_page(request: Request):
     return templates.TemplateResponse("settings.html", {"request": request})
 
+@app.get("/reports", response_class=HTMLResponse)
+async def reports_page(request: Request):
+    return templates.TemplateResponse("reports.html", {"request": request})
+
 @app.get("/reports/passengers", response_class=HTMLResponse)
 async def passenger_report_page(request: Request):
     return templates.TemplateResponse("passenger_report.html", {"request": request})

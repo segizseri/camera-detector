@@ -1,206 +1,265 @@
 {% extends "base.html" %}
-{% block title %}Настройка NVR / Камер{% endblock %}
+{% from "_ui.html" import icon, page_header %}
+{% block title %}NVR и импорт{% endblock %}
 {% block content %}
-<div class="max-w-4xl mx-auto bg-gray-800 p-8 rounded-lg shadow-xl border border-gray-700">
-    <h2 class="text-2xl font-bold mb-6 flex items-center gap-3">
-        <i class="fas fa-network-wired text-blue-500"></i> Импорт камер из NVR
-    </h2>
-    <form id="nvr-form" class="space-y-6">
-        <div class="grid grid-cols-2 gap-6">
-            <div>
-                <label class="block text-sm font-medium text-gray-400">IP-адрес NVR</label>
-                <input type="text" name="nvr_ip"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    value="192.168.1.100" required>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-400">Порт RTSP</label>
-                <input type="number" name="nvr_rtsp_port" value="554"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-400">Имя пользователя</label>
-                <input type="text" name="username"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    value="admin" required>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-400">Пароль</label>
-                <input type="password" name="password"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    required>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-400">Количество каналов</label>
-                <input type="number" name="channels_count" value="16"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    required>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-400">Профиль</label>
-                <select name="stream_profile"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    <option value="substream" selected>Substream (Низкое разрешение)</option>
-                    <option value="mainstream">Mainstream (Высокое разрешение)</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-400">Бренд</label>
-                <select name="brand_preset"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    <option value="hikvision" selected>Hikvision</option>
-                    <option value="generic">Generic/Dahua</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-400">Транспорт RTSP</label>
-                <select name="rtsp_transport"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    <option value="tcp" selected>TCP (Стабильный)</option>
-                    <option value="udp">UDP</option>
-                </select>
-            </div>
-        </div>
+{% call page_header("NVR и импорт камер", "Подключитесь к видеорегистратору по RTSP, найдите активные каналы и импортируйте нужные камеры.") %}
+    <a href="/cameras" class="btn btn-secondary">{{ icon("video", "icon-sm") }}К камерам</a>
+{% endcall %}
 
-        <div class="flex items-center gap-4 mt-6 border-b border-gray-700 pb-6">
-            <button type="button" id="btn-test"
-                class="bg-gray-600 hover:bg-gray-500 text-white py-2 px-6 rounded shadow font-medium transition-colors">
-                <i class="fas fa-plug"></i> Проверить подключение
-            </button>
-            <button type="button" id="btn-discover"
-                class="bg-blue-600 hover:bg-blue-500 text-white py-2 px-6 rounded shadow font-medium transition-colors">
-                <i class="fas fa-search"></i> Найти камеры
-            </button>
-        </div>
+<ol class="steps mb-4" aria-label="Шаги импорта">
+    <li class="step" data-step="1" data-state="active"><span class="step-dot">1</span>Подключение</li>
+    <li class="step" data-step="2"><span class="step-dot">2</span>Поиск каналов</li>
+    <li class="step" data-step="3"><span class="step-dot">3</span>Импорт</li>
+</ol>
 
-        <div id="discovery-results" class="mt-8 hidden">
-            <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
-                <i class="fas fa-list text-green-500"></i> Найденные каналы
-            </h3>
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-700">
-                    <thead class="bg-gray-900">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                <input type="checkbox" id="select-all" class="rounded bg-gray-700 border-gray-600 text-blue-500">
-                            </th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Канал</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Статус</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Кодек</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">RTSP URL</th>
-                        </tr>
-                    </thead>
-                    <tbody id="discovery-tbody" class="divide-y divide-gray-700 bg-gray-800">
-                    </tbody>
-                </table>
-            </div>
-            <div class="mt-6">
-                <button type="button" id="btn-import-selected"
-                    class="bg-green-600 hover:bg-green-500 text-white py-2 px-6 rounded shadow font-medium transition-colors">
-                    <i class="fas fa-download"></i> Импортировать выбранные
-                </button>
-            </div>
+<div class="grid grid-cols-1 xl:grid-cols-5 gap-4 items-start">
+    <form id="nvr-form" class="card xl:col-span-2" autocomplete="off" novalidate>
+        <div class="card-header">
+            <h2 class="card-title">{{ icon("network", "icon-sm text-subtle") }}Видеорегистратор</h2>
         </div>
+        <div class="card-body space-y-5">
+            <fieldset class="space-y-4">
+                <legend class="section-title mb-3">Подключение</legend>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="field sm:col-span-2">
+                        <label class="label" for="nvr_ip">IP-адрес NVR</label>
+                        <input type="text" id="nvr_ip" name="nvr_ip" class="input input-mono" value="192.168.1.100" required inputmode="decimal" spellcheck="false">
+                    </div>
+                    <div class="field">
+                        <label class="label" for="nvr_rtsp_port">Порт RTSP</label>
+                        <input type="number" id="nvr_rtsp_port" name="nvr_rtsp_port" class="input num" value="554" min="1" max="65535" required>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="field">
+                        <label class="label" for="username">Пользователь</label>
+                        <input type="text" id="username" name="username" class="input" value="admin" required autocomplete="username" spellcheck="false">
+                    </div>
+                    <div class="field">
+                        <label class="label" for="password">Пароль</label>
+                        <input type="password" id="password" name="password" class="input" required autocomplete="current-password">
+                    </div>
+                </div>
+                <p class="hint flex items-start gap-1.5">{{ icon("info", "icon-xs mt-0.5") }}Пароль хранится на сервере в зашифрованном виде и не возвращается в интерфейс.</p>
+            </fieldset>
 
-        <div id="status-msg" class="mt-4 text-sm font-medium"></div>
+            <hr class="divider">
+
+            <fieldset class="space-y-4">
+                <legend class="section-title mb-3">Поток</legend>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="field">
+                        <label class="label" for="brand_preset">Производитель</label>
+                        <select id="brand_preset" name="brand_preset" class="select">
+                            <option value="hikvision" selected>Hikvision</option>
+                            <option value="generic">Dahua и совместимые</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label class="label" for="channels_count">Число каналов</label>
+                        <input type="number" id="channels_count" name="channels_count" class="input num" value="16" min="1" max="256" required>
+                    </div>
+                    <div class="field">
+                        <label class="label" for="stream_profile">Профиль потока</label>
+                        <select id="stream_profile" name="stream_profile" class="select">
+                            <option value="substream" selected>Дополнительный (substream)</option>
+                            <option value="mainstream">Основной (mainstream)</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label class="label" for="rtsp_transport">Транспорт RTSP</label>
+                        <select id="rtsp_transport" name="rtsp_transport" class="select">
+                            <option value="tcp" selected>TCP — стабильнее</option>
+                            <option value="udp">UDP</option>
+                        </select>
+                    </div>
+                </div>
+                <p class="hint">Для аналитики достаточно дополнительного потока: он легче для CPU и сети.</p>
+            </fieldset>
+
+            <div id="status-msg" aria-live="polite"></div>
+        </div>
+        <div class="card-footer justify-start">
+            <button type="button" id="btn-test" class="btn btn-secondary">{{ icon("plug", "icon-sm") }}Проверить подключение</button>
+            <button type="submit" id="btn-discover" class="btn btn-primary">{{ icon("search", "icon-sm") }}Найти каналы</button>
+        </div>
     </form>
+
+    <section class="card xl:col-span-3" aria-labelledby="results-title">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title" id="results-title">{{ icon("list", "icon-sm text-subtle") }}Найденные каналы</h2>
+                <p class="card-subtitle" id="results-subtitle">Запустите поиск, чтобы увидеть каналы регистратора.</p>
+            </div>
+            <span class="badge badge-primary" id="selected-count" hidden></span>
+        </div>
+        <div id="results-body">
+            <div class="empty">
+                <div class="empty-icon">{{ icon("network", "icon-lg") }}</div>
+                <div class="empty-title">Каналы ещё не найдены</div>
+                <p class="empty-text">Заполните параметры регистратора и нажмите «Найти каналы». Проверка 16 каналов занимает до 10 секунд.</p>
+            </div>
+        </div>
+        <div class="card-footer" id="results-footer" hidden>
+            <span class="text-sm text-muted mr-auto">Онлайн-каналы отмечены заранее</span>
+            <button type="button" id="btn-import-selected" class="btn btn-primary">{{ icon("download", "icon-sm") }}Импортировать выбранные</button>
+        </div>
+    </section>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    let lastNvrConfig = null;
+    (function () {
+        const { api, escapeHtml, icon } = UI;
+        const form = document.getElementById('nvr-form');
+        const statusBox = document.getElementById('status-msg');
+        let lastConfig = null;
+        let channels = [];
 
-    document.getElementById('btn-test').addEventListener('click', async () => {
-        const formData = new FormData(document.getElementById('nvr-form'));
-        const data = Object.fromEntries(formData);
-        data.nvr_rtsp_port = parseInt(data.nvr_rtsp_port);
-        data.channels_count = parseInt(data.channels_count);
-        document.getElementById('status-msg').innerHTML = "<span class='text-yellow-400'><i class='fas fa-spinner fa-spin'></i> Проверка подключения...</span>";
-
-        try {
-            const res = await fetch('/api/nvr/test-connection', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+        function setStep(step, failed) {
+            document.querySelectorAll('[data-step]').forEach((el) => {
+                const n = Number(el.dataset.step);
+                el.dataset.state = n < step ? 'done' : n === step ? (failed ? 'failed' : 'active') : '';
+                el.querySelector('.step-dot').innerHTML = n < step ? icon('check', 'icon-xs') : String(n);
             });
-            const out = await res.json();
-            if (out.status === "success") {
-                document.getElementById('status-msg').innerHTML = `<span class='text-green-400'><i class='fas fa-check'></i> ${out.message}</span>`;
-            } else {
-                document.getElementById('status-msg').innerHTML = `<span class='text-red-400'><i class='fas fa-times'></i> ${out.message}</span>`;
+        }
+
+        // Ошибка ffprobe с сервера может содержать RTSP-адрес с паролем: маскируем его в интерфейсе.
+        const maskCredentials = (text) => String(text || '').replace(/(rtsp:\/\/[^:@\s\/]+:)[^@\s]+@/gi, '$1***@');
+
+        function showStatus(type, title, text) {
+            text = maskCredentials(text);
+            const icons = { success: 'check-circle', danger: 'alert-circle', info: 'info', warning: 'alert-triangle' };
+            statusBox.innerHTML = `<div class="alert alert-${type}">${type === 'info' ? '<span class="spinner text-info-fg" aria-hidden="true"></span>' : icon(icons[type])}<div><div class="alert-title">${escapeHtml(title)}</div>${text ? `<p class="text-muted break-words">${escapeHtml(text)}</p>` : ''}</div></div>`;
+        }
+
+        function readForm() {
+            const required = ['nvr_ip', 'username', 'password', 'channels_count'];
+            let firstInvalid = null;
+            required.forEach((name) => {
+                const el = form.elements[name];
+                const bad = !String(el.value).trim();
+                el.setAttribute('aria-invalid', String(bad));
+                if (bad && !firstInvalid) firstInvalid = el;
+            });
+            if (firstInvalid) {
+                firstInvalid.focus();
+                showStatus('danger', 'Заполните обязательные поля', 'IP-адрес, пользователь, пароль и число каналов.');
+                return null;
             }
-        } catch (e) {
-            document.getElementById('status-msg').innerHTML = `<span class='text-red-400'><i class='fas fa-times'></i> Ошибка проверки подключения: ${e}</span>`;
-        }
-    });
-
-    document.getElementById('btn-discover').addEventListener('click', async () => {
-        const formData = new FormData(document.getElementById('nvr-form'));
-        const data = Object.fromEntries(formData);
-        data.nvr_rtsp_port = parseInt(data.nvr_rtsp_port);
-        data.channels_count = parseInt(data.channels_count);
-        lastNvrConfig = data;
-
-        document.getElementById('status-msg').innerHTML = "<span class='text-blue-400'><i class='fas fa-spinner fa-spin'></i> Поиск камер (это может занять время)...</span>";
-        document.getElementById('discovery-results').classList.add('hidden');
-
-        try {
-            const res = await fetch('/api/nvr/discover', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            const out = await res.json();
-            const tbody = document.getElementById('discovery-tbody');
-            tbody.innerHTML = '';
-
-            out.channels.forEach(ch => {
-                const tr = document.createElement('tr');
-                const badgeClass = ch.status === 'online' ? 'bg-green-900/50 text-green-400 border-green-700' : 'bg-red-900/50 text-red-400 border-red-700';
-                tr.innerHTML = `
-                    <td class="px-4 py-4 whitespace-nowrap"><input type="checkbox" name="selected_channels" value="${ch.channel}" class="ch-checkbox rounded bg-gray-700 border-gray-600 text-blue-500" ${ch.status === 'online' ? 'checked' : ''}></td>
-                    <td class="px-4 py-4 whitespace-nowrap font-medium text-white">Канал ${ch.channel}</td>
-                    <td class="px-4 py-4 whitespace-nowrap"><span class="px-2 py-1 rounded text-xs border ${badgeClass}">${ch.status.toUpperCase()}</span></td>
-                    <td class="px-4 py-4 whitespace-nowrap text-gray-300 text-sm">${ch.codec || '-'}</td>
-                    <td class="px-4 py-4 whitespace-nowrap text-gray-500 text-xs truncate max-w-xs">${ch.rtsp_url}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-
-            document.getElementById('discovery-results').classList.remove('hidden');
-            document.getElementById('status-msg').innerHTML = "<span class='text-green-400'><i class='fas fa-check'></i> Поиск завершен. Выберите камеры для импорта.</span>";
-        } catch (e) {
-            document.getElementById('status-msg').innerHTML = `<span class='text-red-400'><i class='fas fa-times'></i> Ошибка поиска: ${e}</span>`;
-        }
-    });
-
-    document.getElementById('select-all').addEventListener('change', (e) => {
-        document.querySelectorAll('.ch-checkbox').forEach(cb => cb.checked = e.target.checked);
-    });
-
-    document.getElementById('btn-import-selected').addEventListener('click', async () => {
-        const selected = Array.from(document.querySelectorAll('.ch-checkbox:checked')).map(cb => parseInt(cb.value));
-        if (selected.length === 0) {
-            alert('Выберите хотя бы одну камеру');
-            return;
+            const data = Object.fromEntries(new FormData(form));
+            data.nvr_rtsp_port = parseInt(data.nvr_rtsp_port, 10) || 554;
+            data.channels_count = parseInt(data.channels_count, 10) || 1;
+            return data;
         }
 
-        document.getElementById('status-msg').innerHTML = "<span class='text-blue-400'><i class='fas fa-spinner fa-spin'></i> Импорт выбранных камер...</span>";
+        document.getElementById('btn-test').addEventListener('click', async (event) => {
+            const data = readForm();
+            if (!data) return;
+            const button = event.currentTarget;
+            UI.setBusy(button, true, 'Проверка…');
+            showStatus('info', 'Проверяем подключение к каналу 1…');
+            try {
+                const out = await api('/api/nvr/test-connection', { method: 'POST', json: data });
+                if (out.status === 'success') {
+                    showStatus('success', 'Регистратор отвечает', 'Можно искать каналы.');
+                    setStep(2);
+                } else {
+                    showStatus('danger', 'Не удалось подключиться', out.message);
+                    setStep(1, true);
+                }
+            } catch (error) {
+                showStatus('danger', 'Ошибка проверки', error.message);
+            } finally {
+                UI.setBusy(button, false);
+            }
+        });
 
-        try {
-            const res = await fetch('/api/nvr/import-selected', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    nvr: lastNvrConfig,
-                    selected_channels: selected
-                })
-            });
-            const out = await res.json();
-            document.getElementById('status-msg').innerHTML = `<span class='text-green-400'><i class='fas fa-check'></i> Успешно импортировано ${out.imported_count} камер. Перенаправление...</span>`;
-            setTimeout(() => { window.location.href = '/cameras'; }, 1500);
-        } catch (e) {
-            document.getElementById('status-msg').innerHTML = `<span class='text-red-400'><i class='fas fa-times'></i> Ошибка импорта: ${e}</span>`;
+        function updateSelection() {
+            const checked = [...document.querySelectorAll('.ch-checkbox:checked')];
+            const all = document.getElementById('select-all');
+            if (all) {
+                all.checked = checked.length === channels.length && channels.length > 0;
+                all.indeterminate = checked.length > 0 && checked.length < channels.length;
+            }
+            const badge = document.getElementById('selected-count');
+            badge.hidden = !channels.length;
+            badge.textContent = `Выбрано ${checked.length} из ${channels.length}`;
+            const importButton = document.getElementById('btn-import-selected');
+            importButton.disabled = checked.length === 0;
+            importButton.innerHTML = `${icon('download', 'icon-sm')}Импортировать ${checked.length ? checked.length : ''} ${UI.plural(checked.length, ['камеру', 'камеры', 'камер'])}`;
         }
-    });
+
+        function renderChannels() {
+            const online = channels.filter((c) => c.status === 'online').length;
+            document.getElementById('results-subtitle').textContent = `Онлайн ${online} из ${channels.length}`;
+            document.getElementById('results-body').innerHTML = `<div class="table-wrap"><table class="table">
+                <thead><tr>
+                    <th scope="col" class="w-10"><input type="checkbox" class="checkbox" id="select-all" aria-label="Выбрать все каналы"></th>
+                    <th scope="col">Канал</th><th scope="col">Статус</th><th scope="col">Кодек</th><th scope="col">RTSP</th>
+                </tr></thead>
+                <tbody>${channels.map((ch) => `<tr>
+                    <td><input type="checkbox" class="checkbox ch-checkbox" value="${ch.channel}" id="ch-${ch.channel}" ${ch.status === 'online' ? 'checked' : ''}></td>
+                    <td><label for="ch-${ch.channel}" class="font-semibold text-fg cursor-pointer">Канал ${ch.channel}</label></td>
+                    <td>${ch.status === 'online' ? '<span class="badge badge-success"><span class="dot"></span>Онлайн</span>' : '<span class="badge badge-system"><span class="dot"></span>Нет сигнала</span>'}</td>
+                    <td class="mono text-muted">${escapeHtml(ch.codec || '—')}</td>
+                    <td class="mono text-subtle max-w-xs truncate" title="${escapeHtml(ch.rtsp_url)}">${escapeHtml(ch.rtsp_url)}</td>
+                </tr>`).join('')}</tbody></table></div>`;
+            document.getElementById('results-footer').hidden = false;
+            updateSelection();
+        }
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const data = readForm();
+            if (!data) return;
+            lastConfig = data;
+            const button = document.getElementById('btn-discover');
+            UI.setBusy(button, true, 'Поиск…');
+            showStatus('info', `Проверяем ${data.channels_count} ${UI.plural(data.channels_count, ['канал', 'канала', 'каналов'])}…`, 'Это может занять до минуты.');
+            document.getElementById('results-body').innerHTML = `<div class="p-5 space-y-3" aria-hidden="true">${'<div class="skeleton h-9"></div>'.repeat(5)}</div>`;
+            try {
+                const out = await api('/api/nvr/discover', { method: 'POST', json: data });
+                channels = out.channels || [];
+                renderChannels();
+                const online = channels.filter((c) => c.status === 'online').length;
+                showStatus(online ? 'success' : 'warning', online ? 'Поиск завершён' : 'Активных каналов не найдено', online ? 'Отметьте камеры для импорта.' : 'Проверьте учётные данные, профиль потока и производителя.');
+                setStep(online ? 3 : 2, !online);
+            } catch (error) {
+                showStatus('danger', 'Ошибка поиска', error.message);
+                document.getElementById('results-body').innerHTML = UI.emptyState({ iconName: 'alert-circle', title: 'Поиск не удался', text: error.message });
+                setStep(2, true);
+            } finally {
+                UI.setBusy(button, false);
+            }
+        });
+
+        document.getElementById('results-body').addEventListener('change', (event) => {
+            if (event.target.id === 'select-all') {
+                document.querySelectorAll('.ch-checkbox').forEach((cb) => { cb.checked = event.target.checked; });
+            }
+            updateSelection();
+        });
+
+        document.getElementById('btn-import-selected').addEventListener('click', async (event) => {
+            const selected = [...document.querySelectorAll('.ch-checkbox:checked')].map((cb) => parseInt(cb.value, 10));
+            if (!selected.length) {
+                UI.toast('Выберите хотя бы один канал', { type: 'warning' });
+                return;
+            }
+            const button = event.currentTarget;
+            UI.setBusy(button, true, 'Импорт…');
+            try {
+                const out = await api('/api/nvr/import-selected', { method: 'POST', json: { nvr: lastConfig, selected_channels: selected } });
+                setStep(4);
+                UI.toast(`Добавлено ${out.imported_count} ${UI.plural(out.imported_count, ['камера', 'камеры', 'камер'])}. Переходим к списку…`, { title: 'Импорт завершён' });
+                setTimeout(() => { window.location.href = '/cameras'; }, 1200);
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Импорт не удался' });
+                UI.setBusy(button, false);
+            }
+        });
+    })();
 </script>
 {% endblock %}

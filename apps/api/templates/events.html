@@ -1,99 +1,220 @@
 {% extends "base.html" %}
-{% block title %}История событий | Laptop AI Box{% endblock %}
+{% from "_ui.html" import icon, page_header, skeleton_rows %}
+{% block title %}События{% endblock %}
 {% block content %}
-<div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-    <h1 class="text-3xl font-bold">История событий</h1>
-    <div class="flex items-center gap-3">
-        <select id="filter-type" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm focus:ring-blue-500">
-            <option value="all">Все типы</option>
-            <option value="fight_suspected">Драка</option>
-            <option value="theft_suspected">Кража / Воровство</option>
-            <option value="shoplifting_suspected">Кража из витрины</option>
-            <option value="person_detected">Человек</option>
-            <option value="camera_offline">Оффлайн</option>
-        </select>
-        <button onclick="clearAllEvents()" class="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-900/50 px-4 py-1.5 rounded text-sm transition-all">
-            <i class="fas fa-trash-alt mr-2"></i> Очистить всё
-        </button>
+{% call page_header("События", "Инциденты детекторов и системные события. Нажмите на событие, чтобы открыть снимок и клип.") %}
+    <button type="button" class="btn btn-secondary" id="btn-refresh">{{ icon("refresh", "icon-sm") }}Обновить</button>
+    <button type="button" class="btn btn-danger-soft" id="btn-clear">{{ icon("trash", "icon-sm") }}Очистить все</button>
+{% endcall %}
+
+<form id="filters" class="card p-4 mb-4 grid grid-cols-2 xl:grid-cols-[1.4fr_1.2fr_1fr_1fr_auto] gap-3 items-end" role="search" aria-label="Фильтры событий">
+    <div class="field col-span-2 sm:col-span-1">
+        <label class="label" for="filter-type">Тип события</label>
+        <select id="filter-type" name="type" class="select"></select>
+    </div>
+    <div class="field col-span-2 sm:col-span-1">
+        <label class="label" for="filter-camera">Камера</label>
+        <select id="filter-camera" name="camera" class="select"><option value="">Все камеры</option></select>
+    </div>
+    <div class="field">
+        <label class="label" for="filter-from">С даты</label>
+        <input type="date" id="filter-from" name="from" class="input">
+    </div>
+    <div class="field">
+        <label class="label" for="filter-to">По дату</label>
+        <input type="date" id="filter-to" name="to" class="input">
+    </div>
+    <button type="reset" class="btn btn-ghost col-span-2 xl:col-span-1" id="btn-reset">{{ icon("x", "icon-sm") }}Сбросить</button>
+</form>
+
+<div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <p class="text-sm text-muted" id="summary" aria-live="polite">&nbsp;</p>
+    <div class="seg" role="group" aria-label="Серьёзность" id="severity-filter">
+        <button type="button" data-sev="all" aria-pressed="true">Все</button>
+        <button type="button" data-sev="critical" aria-pressed="false"><span class="dot sev-critical"></span>Критичные</button>
+        <button type="button" data-sev="high" aria-pressed="false"><span class="dot sev-high"></span>Высокие</button>
+        <button type="button" data-sev="medium" aria-pressed="false"><span class="dot sev-medium"></span>Средние</button>
     </div>
 </div>
 
-<div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
-    <div id="events-list" class="space-y-4">
-        <div class="text-center text-gray-500 py-12"><i class="fas fa-spinner fa-spin text-3xl mb-4"></i> Загрузка
-            событий...</div>
-    </div>
-</div>
+<section class="card overflow-clip" aria-label="Список событий">
+    <div id="events-list">{{ skeleton_rows(8) }}</div>
+</section>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    async function clearAllEvents() {
-        if (!confirm('Вы уверены, что хотите удалить ВСЕ события? Это действие необратимо.')) return;
-        const res = await fetch('/api/events/all', { method: 'DELETE' });
-        if (res.ok) {
-            loadEvents();
-        } else {
-            alert('Ошибка при очистке событий');
+    (function () {
+        const { api, escapeHtml, icon, fmt, eventMeta, eventBadge, snapshotUrl, clipUrl } = UI;
+        const listEl = document.getElementById('events-list');
+        const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, info: 3, system: 4 };
+        let events = [];
+        let filtered = [];
+        let cameraById = new Map();
+        let severity = 'all';
+        let cameraOptions = '';
+
+        const cameraName = (id) => cameraById.get(id)?.name || id;
+
+        // Типы событий: детекторы каталога, затем прочие и системные.
+        const typeSelect = document.getElementById('filter-type');
+        const groups = { detector: 'Детекторы', other: 'Прочее', system: 'Система' };
+        typeSelect.innerHTML = '<option value="">Все типы</option>' + Object.entries(groups).map(([group, label]) => {
+            const items = Object.values(UI.EVENT_TYPES).filter((t) => t.group === group);
+            return `<optgroup label="${label}">${items.map((t) => `<option value="${t.type}">${escapeHtml(t.label)}</option>`).join('')}</optgroup>`;
+        }).join('');
+
+        // Состояние фильтров живёт в адресе страницы, чтобы ссылкой можно было поделиться.
+        const params = new URLSearchParams(location.search);
+        const fields = { type: typeSelect, camera: document.getElementById('filter-camera'), from: document.getElementById('filter-from'), to: document.getElementById('filter-to') };
+        Object.entries(fields).forEach(([key, el]) => { if (params.get(key)) el.value = params.get(key); });
+        if (params.get('sev')) setSeverity(params.get('sev'), false);
+
+        function syncUrl() {
+            const next = new URLSearchParams();
+            Object.entries(fields).forEach(([key, el]) => { if (el.value) next.set(key, el.value); });
+            if (severity !== 'all') next.set('sev', severity);
+            history.replaceState(null, '', `${location.pathname}${next.toString() ? `?${next}` : ''}`);
         }
-    }
 
-    async function loadEvents() {
-        try {
-            const filterType = document.getElementById('filter-type').value;
-            const res = await fetch('/api/events');
-            let events = await res.json();
+        function setSeverity(value, render = true) {
+            severity = value;
+            document.querySelectorAll('#severity-filter [data-sev]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sev === value)));
+            if (render) applyFilters();
+        }
 
-            // Client-side filtering for simplicity in MVP
-            if (filterType !== 'all') {
-                events = events.filter(e => e.event_type === filterType);
-            }
+        function dayLabel(date) {
+            const d = UI.parseDate(date);
+            if (!d) return 'Без даты';
+            const today = new Date();
+            const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+            const diff = Math.round((start(today) - start(d)) / 86400000);
+            if (diff === 0) return 'Сегодня';
+            if (diff === 1) return 'Вчера';
+            return fmt.date(d);
+        }
 
-            const list = document.getElementById('events-list');
-            if (events.length === 0) {
-                list.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-4"></i><p>События не найдены.</p></div>';
+        function applyFilters() {
+            const type = fields.type.value;
+            const cam = fields.camera.value;
+            const from = fields.from.value ? new Date(`${fields.from.value}T00:00:00`) : null;
+            const to = fields.to.value ? new Date(`${fields.to.value}T23:59:59.999`) : null;
+            filtered = events.filter((e) => {
+                const meta = eventMeta(e.event_type);
+                const ts = UI.parseDate(e.timestamp);
+                if (type && e.event_type !== type) return false;
+                if (cam && e.camera_id !== cam) return false;
+                if (from && ts && ts < from) return false;
+                if (to && ts && ts > to) return false;
+                if (severity !== 'all' && meta.severity !== severity) return false;
+                return true;
+            });
+            syncUrl();
+            render();
+        }
+
+        function render() {
+            const active = Object.values(fields).some((el) => el.value) || severity !== 'all';
+            const capped = events.length >= 100 ? ' · сервер отдаёт последние 100 событий' : '';
+            document.getElementById('summary').textContent = active
+                ? `Найдено ${filtered.length} из ${events.length}${capped}`
+                : `${events.length} ${UI.plural(events.length, ['событие', 'события', 'событий'])}${capped}`;
+            if (!events.length) {
+                listEl.innerHTML = UI.emptyState({ iconName: 'inbox', title: 'Событий нет', text: 'Когда детекторы на камерах что-то заметят, события появятся здесь.' });
                 return;
             }
-
-            const eventMapping = {
-                'person_detected': 'Обнаружен человек',
-                'fight_suspected': 'Подозрение на драку',
-                'theft_suspected': 'Подозрение на кражу',
-                'shoplifting_suspected': 'Кража из витрины',
-                'camera_offline': 'Камера отключена'
-            };
-
-            list.innerHTML = events.map(e => {
-                const displayName = eventMapping[e.event_type] || e.event_type;
-                return `
-                <div class="flex items-start bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-gray-500 transition-colors">
-                    <div class="w-12 h-12 flex-shrink-0 bg-gray-800 rounded flex items-center justify-center mr-4">
-                        ${e.event_type.includes('person') ? '<i class="fas fa-user-friends text-blue-500 text-xl"></i>' :
-                    e.event_type.includes('fight') ? '<i class="fas fa-exclamation-triangle text-red-500 text-xl"></i>' :
-                    e.event_type.includes('shoplifting') ? '<i class="fas fa-store-slash text-teal-500 text-xl"></i>' :
-                    e.event_type.includes('theft') ? '<i class="fas fa-hand-holding-box text-purple-500 text-xl"></i>' :
-                        '<i class="fas fa-video-slash text-yellow-500 text-xl"></i>'}
-                    </div>
-                    <div class="flex-grow">
-                        <div class="flex justify-between items-center mb-1">
-                            <h3 class="text-lg font-bold text-gray-200 capitalize">${displayName}</h3>
-                            <span class="text-xs text-gray-500">${new Date(e.timestamp).toLocaleString()}</span>
-                        </div>
-                        <p class="text-sm text-gray-400">Камера: ${e.camera_id}</p>
-                        ${e.confidence ? `<p class="text-xs mt-2 text-gray-500 font-mono">Уверенность: ${(e.confidence * 100).toFixed(1)}%</p>` : ''}
-                        
-                        ${e.snapshot_path ? `
-                            <div class="mt-4 break-words text-xs gap-2 flex items-center">
-                                <a href="/media/snapshots/${e.snapshot_path}" target="_blank" class="px-3 py-1 bg-blue-600/30 hover:bg-blue-600 text-blue-300 rounded"><i class="fas fa-image"></i> Посмотреть снимок</a>
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-            `; }).join('');
-        } catch (e) {
-            document.getElementById('events-list').innerHTML = `<div class="text-red-500 py-8 text-center">Не удалось загрузить события: ${e}</div>`;
+            if (!filtered.length) {
+                listEl.innerHTML = UI.emptyState({ iconName: 'filter', title: 'Ничего не найдено', text: 'Под выбранные фильтры событий нет.', action: '<button type="button" class="btn btn-secondary btn-sm" data-reset>Сбросить фильтры</button>' });
+                return;
+            }
+            let lastDay = null;
+            let html = '';
+            filtered.forEach((e, index) => {
+                const day = dayLabel(e.timestamp);
+                if (day !== lastDay) {
+                    html += `${lastDay === null ? '' : '</ul>'}<h2 class="px-5 py-2 text-xs font-semibold text-subtle bg-surface-2 border-y border-line first:border-t-0 sticky top-[var(--topbar-h)] z-10">${escapeHtml(day)}</h2><ul class="divide-y divide-line">`;
+                    lastDay = day;
+                }
+                const meta = eventMeta(e.event_type);
+                const snap = snapshotUrl(e.snapshot_path);
+                html += `<li>
+                    <button type="button" class="w-full text-left flex items-stretch gap-3 sm:gap-4 px-4 sm:px-5 py-3 hover:bg-surface-2 transition-colors" data-index="${index}" aria-label="${escapeHtml(meta.label)}, ${escapeHtml(cameraName(e.camera_id))}, ${escapeHtml(fmt.full(e.timestamp))}">
+                        <span class="sev-bar bg-current ${UI.SEVERITY[meta.severity].text}" aria-hidden="true"></span>
+                        <span class="relative w-24 sm:w-32 aspect-video rounded-md overflow-hidden border border-line bg-surface-2 shrink-0 grid place-items-center text-subtle">
+                            ${snap ? `<img src="${snap}" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : icon(meta.icon, 'icon-lg')}
+                            ${e.clip_path ? `<span class="absolute bottom-1 right-1 badge badge-sm badge-overlay">${icon('film', 'icon-xs')}Клип</span>` : ''}
+                        </span>
+                        <span class="min-w-0 flex-1 flex flex-col justify-center gap-1">
+                            <span class="flex flex-wrap items-center gap-2">${eventBadge(e.event_type)}${UI.eventIsTest(e) ? '<span class="badge badge-sm badge-outline">Тест</span>' : ''}</span>
+                            <span class="text-sm font-medium text-fg truncate">${escapeHtml(cameraName(e.camera_id))}</span>
+                            <span class="text-xs text-subtle sm:hidden">${escapeHtml(fmt.time(e.timestamp))}${e.confidence != null ? ` · ${fmt.percent(e.confidence)}` : ''}</span>
+                        </span>
+                        <span class="hidden sm:flex flex-col items-end justify-center text-right shrink-0 gap-0.5">
+                            <span class="text-sm text-fg num">${escapeHtml(fmt.time(e.timestamp))}</span>
+                            <span class="text-xs text-subtle">${escapeHtml(fmt.relative(e.timestamp))}</span>
+                            ${e.confidence != null ? `<span class="text-xs text-muted num">уверенность ${fmt.percent(e.confidence)}</span>` : ''}
+                        </span>
+                        <span class="hidden md:grid place-items-center text-subtle">${icon('chevron-right', 'icon-sm')}</span>
+                    </button>
+                </li>`;
+            });
+            listEl.innerHTML = `${html}</ul>`;
         }
-    }
 
-    document.getElementById('filter-type').addEventListener('change', loadEvents);
-    loadEvents();
+        async function load({ quiet = false } = {}) {
+            try {
+                const [cams, list] = await Promise.all([UI.cameras({ refresh: true }).catch(() => []), api('/api/events/')]);
+                cameraById = new Map(cams.map((c) => [c.id, c]));
+                const camSelect = fields.camera;
+                const options = '<option value="">Все камеры</option>' + cams.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join('');
+                if (cameraOptions !== options) {
+                    const current = camSelect.value || params.get('camera') || '';
+                    camSelect.innerHTML = options;
+                    cameraOptions = options;
+                    camSelect.value = current;
+                }
+                const changed = JSON.stringify(list.map((e) => [e.id, e.clip_path])) !== JSON.stringify(events.map((e) => [e.id, e.clip_path]));
+                events = list;
+                // Фоновое обновление без изменений не перерисовывает список и не сбивает фокус.
+                if (changed || !quiet) applyFilters();
+            } catch (error) {
+                if (!quiet || !events.length) listEl.innerHTML = UI.errorState(error.message);
+            }
+        }
+
+        listEl.addEventListener('click', (event) => {
+            const row = event.target.closest('[data-index]');
+            if (row) UI.openEvent(filtered, Number(row.dataset.index), { cameraName });
+            if (event.target.closest('[data-retry]')) load();
+            if (event.target.closest('[data-reset]')) document.getElementById('filters').reset();
+        });
+        document.getElementById('filters').addEventListener('change', applyFilters);
+        document.getElementById('filters').addEventListener('submit', (event) => { event.preventDefault(); applyFilters(); });
+        document.getElementById('filters').addEventListener('reset', () => setTimeout(() => setSeverity('all'), 0));
+        document.getElementById('severity-filter').addEventListener('click', (event) => {
+            const b = event.target.closest('[data-sev]');
+            if (b) setSeverity(b.dataset.sev);
+        });
+        document.getElementById('btn-refresh').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            UI.setBusy(button, true, 'Обновление');
+            await load();
+            UI.setBusy(button, false);
+        });
+        document.getElementById('btn-clear').addEventListener('click', async () => {
+            const ok = await UI.confirm({ title: 'Удалить все события?', message: 'Будут удалены все события всех камер. Действие необратимо.', confirmText: 'Удалить все' });
+            if (!ok) return;
+            try {
+                await api('/api/events/all', { method: 'DELETE' });
+                UI.toast('Все события удалены');
+                load();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось удалить события' });
+            }
+        });
+
+        load();
+        UI.poll(() => load({ quiet: true }), 30000);
+    })();
 </script>
 {% endblock %}

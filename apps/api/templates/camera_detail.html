@@ -1,636 +1,851 @@
 {% extends "base.html" %}
-{% block title %}Детали камеры | Laptop AI Box{% endblock %}
+{% from "_ui.html" import icon %}
+{% block title %}Камера{% endblock %}
 {% block content %}
-<div class="mb-4">
-    <a href="/cameras" class="text-gray-400 hover:text-white"><i class="fas fa-arrow-left"></i> Назад к камерам</a>
-</div>
-
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <!-- Player -->
-    <div class="lg:col-span-2 bg-gray-800 rounded-lg shadow-xl overflow-hidden border border-gray-700">
-        <div class="relative w-full aspect-video bg-black flex items-center justify-center">
-            <video id="hls-player" controls class="w-full h-full hidden"></video>
-            <canvas id="theft-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-10 hidden"></canvas>
-            
-            <div id="roi-controls" class="absolute top-4 right-4 z-20 flex flex-wrap justify-end gap-2 max-w-[300px]">
-                <button type="button" id="btn-draw-roi" class="bg-blue-600 hover:bg-blue-500 text-white text-[10px] px-2 py-1 rounded shadow transition-colors" title="Нарисовать зону кражи"><i class="fas fa-draw-polygon"></i> Зона Кассы</button>
-                <button type="button" id="btn-draw-display" class="bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] px-2 py-1 rounded shadow transition-colors" title="Нарисовать зону витрины"><i class="fas fa-draw-polygon"></i> Зона Витрины</button>
-                <button type="button" id="btn-draw-front" class="bg-green-600 hover:bg-green-500 text-white text-[10px] px-2 py-1 rounded shadow transition-colors" title="Нарисовать линию (передняя дверь)"><i class="fas fa-grip-lines"></i> Перед. дверь</button>
-                <button type="button" id="btn-draw-rear" class="bg-green-600 hover:bg-green-500 text-white text-[10px] px-2 py-1 rounded shadow transition-colors" title="Нарисовать линию (задняя дверь)"><i class="fas fa-grip-lines"></i> Зад. дверь</button>
-                
-                <button type="button" id="btn-clear-roi" class="bg-red-600 hover:bg-red-500 text-white text-[10px] px-2 py-1 rounded shadow hidden" title="Очистить всё"><i class="fas fa-trash"></i> Сброс</button>
-                <button type="button" id="btn-save-roi" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] px-2 py-1 rounded shadow hidden"><i class="fas fa-check"></i> Сохранить</button>
+<div id="camera-page" data-camera-id="{{ camera_id }}">
+    <header class="page-header">
+        <div class="min-w-0">
+            <nav class="breadcrumbs" aria-label="Навигационная цепочка">
+                <a href="/cameras">Камеры</a>{{ icon("chevron-right", "icon-xs") }}<span aria-current="page" id="crumb-name">Камера</span>
+            </nav>
+            <div class="flex flex-wrap items-center gap-3">
+                <h1 class="page-title" id="cam-title"><span class="skeleton h-8 w-56 inline-block align-middle"></span></h1>
+                <span id="cam-status"></span>
             </div>
-            <div id="player-loading" class="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
-                <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
-                <p>Инициализация HLS потока...</p>
-                <p class="text-xs text-gray-600 mt-2">Это может занять несколько секунд.</p>
-            </div>
-            <div id="player-error"
-                class="absolute inset-0 flex flex-col items-center justify-center text-red-500 hidden bg-black">
-                <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
-                <p>Поток недоступен.</p>
-            </div>
+            <p class="page-subtitle" id="cam-subtitle">&nbsp;</p>
         </div>
-        <div class="p-4 border-t border-gray-700 flex justify-between items-center">
-            <h2 id="cam-name" class="text-xl font-bold">Загрузка...</h2>
-            <div id="cam-status" class="px-3 py-1 bg-gray-700 text-xs rounded-full uppercase tracking-wide">ОЖИДАНИЕ</div>
+        <div class="page-actions">
+            <button type="button" class="btn btn-secondary" id="btn-test-rtsp">{{ icon("activity", "icon-sm") }}Проверить RTSP</button>
+        </div>
+    </header>
+
+    <div id="not-found" class="card" hidden></div>
+
+    <div id="camera-layout" class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <div class="lg:col-span-2 space-y-4 min-w-0">
+            <!-- Плеер и редактор зон -->
+            <section class="card overflow-hidden scroll-mt-20" aria-labelledby="player-title" id="player-card">
+                <h2 class="sr-only" id="player-title">Просмотр и зоны</h2>
+                <div class="media-frame media-grid-bg" id="frame">
+                    <video id="player" muted playsinline hidden></video>
+                    <canvas id="zones-canvas" class="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true"></canvas>
+                    <div class="media-overlay" data-overlay="connecting"><span class="spinner spinner-lg" aria-hidden="true"></span><span>Подключение к потоку…</span><span class="text-xs text-slate-400">Первый кадр появится через несколько секунд</span></div>
+                    <div class="media-overlay" data-overlay="error" hidden>
+                        <span class="text-red-300">{{ icon("video-off", "icon-xl") }}</span>
+                        <span class="font-semibold text-slate-100">Поток недоступен</span>
+                        <span class="text-xs text-slate-400 max-w-sm" data-error-text></span>
+                        <button type="button" class="btn btn-secondary btn-sm mt-1" data-action="replay">{{ icon("refresh", "icon-sm") }}Повторить</button>
+                    </div>
+                    <div class="media-overlay" data-overlay="idle" hidden>
+                        <button type="button" class="tile-play" data-action="replay" aria-label="Запустить просмотр">{{ icon("play", "icon-lg") }}</button>
+                        <span>Просмотр остановлен</span>
+                    </div>
+                    <div class="tile-badges">
+                        <span class="badge badge-overlay" id="live-badge" hidden><span class="dot dot-live text-red-500"></span>LIVE</span>
+                        <span class="flex gap-1.5 ml-auto pointer-events-auto">
+                            <button type="button" class="btn btn-xs badge-overlay" id="btn-toggle-zones" aria-pressed="true">{{ icon("eye", "icon-xs") }}Зоны</button>
+                            <button type="button" class="btn btn-xs btn-icon badge-overlay" data-action="stop" id="btn-stop" hidden aria-label="Остановить просмотр">{{ icon("stop", "icon-xs") }}</button>
+                        </span>
+                    </div>
+                </div>
+
+                <div id="draw-banner" class="alert alert-info rounded-none border-x-0 border-b-0" hidden role="region" aria-live="polite" aria-label="Режим рисования">
+                    {{ icon("pencil") }}
+                    <div class="flex-1 min-w-0">
+                        <div class="alert-title" id="draw-title">Рисование</div>
+                        <p id="draw-help" class="text-muted"></p>
+                        <div class="flex flex-wrap gap-2 mt-2.5">
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-draw-save" disabled>{{ icon("check", "icon-sm") }}Сохранить</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-draw-undo" disabled>{{ icon("undo", "icon-sm") }}Убрать точку</button>
+                            <button type="button" class="btn btn-ghost btn-sm" id="btn-draw-cancel">Отмена</button>
+                            <span class="hidden md:flex items-center gap-1.5 text-xs text-subtle ml-auto"><span class="kbd">Enter</span> сохранить <span class="kbd">⌫</span> точка <span class="kbd">Esc</span> отмена</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-body pt-4">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <h3 class="section-title">Зоны на кадре</h3>
+                        <span class="hidden sm:inline text-xs text-subtle">Координаты сохраняются в долях кадра</span>
+                    </div>
+                    <ul id="zone-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></ul>
+                </div>
+            </section>
+
+            <!-- Каталог детекторов -->
+            <section class="card" aria-labelledby="detectors-title">
+                <div class="card-header">
+                    <div>
+                        <h2 class="card-title" id="detectors-title">{{ icon("target", "icon-sm text-subtle") }}Детекторы</h2>
+                        <p class="card-subtitle">Включите только то, что нужно на этой камере. Каталог AI-движка, контракт <span id="contract-version"></span>.</p>
+                    </div>
+                    <span class="badge badge-primary" id="detectors-count">0 из 0</span>
+                </div>
+                <div class="card-body space-y-3">
+                    <div id="ai-off-alert" class="alert alert-warning" hidden>
+                        {{ icon("alert-triangle") }}
+                        <div>
+                            <div class="alert-title">AI-аналитика на камере выключена</div>
+                            <p class="text-muted">Выбор детекторов сохранится, но анализ не начнётся, пока вы не включите AI-аналитику в блоке «Настройки».</p>
+                        </div>
+                    </div>
+                    <ul id="detector-list" class="grid grid-cols-1 xl:grid-cols-2 gap-3"></ul>
+                </div>
+            </section>
+        </div>
+
+        <div class="space-y-4 min-w-0">
+            <!-- Настройки камеры -->
+            <section class="card" aria-labelledby="settings-title">
+                <div class="card-header"><h2 class="card-title" id="settings-title">{{ icon("sliders", "icon-sm text-subtle") }}Настройки</h2></div>
+                <form id="settings-form" class="card-body space-y-4" novalidate>
+                    <div class="field">
+                        <label class="label" for="input-name">Название</label>
+                        <input type="text" id="input-name" class="input" required maxlength="120" autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="setting-row cursor-pointer">
+                            <span class="setting-text"><span class="setting-title block">Камера включена</span><span class="setting-desc block">Получать поток и показывать в системе</span></span>
+                            <input type="checkbox" role="switch" class="switch" id="input-enabled">
+                        </label>
+                        <label class="setting-row cursor-pointer">
+                            <span class="setting-text"><span class="setting-title block">AI-аналитика</span><span class="setting-desc block">Запускать выбранные детекторы</span></span>
+                            <input type="checkbox" role="switch" class="switch" id="input-ai">
+                        </label>
+                    </div>
+                    <div class="field">
+                        <div class="flex items-center justify-between">
+                            <label class="label" for="input-fps">Частота анализа</label>
+                            <output for="input-fps" id="fps-value" class="badge badge-outline num">5 кадр/с</output>
+                        </div>
+                        <input type="range" id="input-fps" class="range" min="1" max="30" step="1" aria-describedby="fps-hint">
+                        <p class="hint" id="fps-hint">Сколько кадров в секунду отдаётся детекторам.</p>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block" id="btn-save">{{ icon("save", "icon-sm") }}Сохранить изменения</button>
+                </form>
+            </section>
+
+            <!-- Транспорт: подсчёт пассажиров, вне AI-движка -->
+            <section class="card" aria-labelledby="transport-title">
+                <div class="card-header">
+                    <div>
+                        <p class="section-title">Транспорт</p>
+                        <h2 class="card-title mt-1" id="transport-title">{{ icon("bus", "icon-sm text-subtle") }}Подсчёт пассажиров</h2>
+                    </div>
+                </div>
+                <div class="card-body space-y-4">
+                    <p class="hint">Отдельный модуль приложения, не входит в каталог детекторов. Считает пересечения линий дверей.</p>
+                    <label class="setting-row cursor-pointer pt-0">
+                        <span class="setting-text"><span class="setting-title block">Считать пассажиров</span><span class="setting-desc block">Сохраняется вместе с настройками</span></span>
+                        <input type="checkbox" role="switch" class="switch switch-success" id="input-passengers">
+                    </label>
+                    <div class="field">
+                        <label class="label" for="bus-select">Автобус</label>
+                        <select id="bus-select" class="select"><option value="">Загрузка…</option></select>
+                        <p class="hint">Привязка применяется сразу.</p>
+                    </div>
+                    <div>
+                        <h3 class="label mb-2">Линии дверей</h3>
+                        <ul id="door-list" class="space-y-2"></ul>
+                    </div>
+                    <a href="/reports/passengers" class="link inline-flex items-center gap-1.5 text-sm">{{ icon("chart-line", "icon-sm") }}Отчёт по пассажиропотоку</a>
+                </div>
+            </section>
+
+            <!-- Проверка и подключение -->
+            <section class="card" aria-labelledby="tools-title">
+                <div class="card-header"><h2 class="card-title" id="tools-title">{{ icon("flask", "icon-sm text-subtle") }}Проверка</h2></div>
+                <div class="card-body space-y-3">
+                    <div class="field">
+                        <label class="label" for="test-type">Тестовое событие</label>
+                        <div class="flex gap-2">
+                            <select id="test-type" class="select flex-1"></select>
+                            <button type="button" class="btn btn-secondary" id="btn-test-event">{{ icon("send", "icon-sm") }}Создать</button>
+                        </div>
+                        <p class="hint">Событие без снимка появится в ленте и уйдёт во все активные вебхуки.</p>
+                    </div>
+                    <hr class="divider">
+                    <dl class="text-sm space-y-2" id="connection-info"></dl>
+                </div>
+            </section>
+
+            <section class="card border-critical/30" aria-labelledby="danger-title">
+                <div class="card-body flex items-center justify-between gap-3">
+                    <div>
+                        <h2 class="font-semibold text-fg" id="danger-title">Удаление камеры</h2>
+                        <p class="hint">Вместе с камерой удаляются её события.</p>
+                    </div>
+                    <button type="button" class="btn btn-danger-soft" id="btn-delete">{{ icon("trash", "icon-sm") }}Удалить</button>
+                </div>
+            </section>
         </div>
     </div>
-
-    <!-- Settings Sidebar -->
-    <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700">
-        <h3 class="text-lg font-bold mb-4 border-b border-gray-700 pb-2">Конфигурация</h3>
-
-        <form id="cam-settings-form" class="space-y-4">
-            <div>
-                <label class="block text-sm text-gray-400">Название</label>
-                <input type="text" id="input-name"
-                    class="mt-1 w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
-                    value="Loading...">
-            </div>
-
-            <div class="flex items-center justify-between">
-                <label class="text-sm text-gray-400 font-medium">Камера включена</label>
-                <input type="checkbox" id="input-enabled"
-                    class="toggle-checkbox h-6 w-11 cursor-pointer appearance-none rounded-full bg-gray-600 checked:bg-blue-600 transition duration-200">
-            </div>
-
-            <div class="flex items-center justify-between">
-                <label class="text-sm text-gray-400 font-medium">Аналитика ИИ включена</label>
-                <input type="checkbox" id="input-ai"
-                    class="toggle-checkbox h-6 w-11 cursor-pointer appearance-none rounded-full bg-gray-600 checked:bg-purple-600 transition duration-200">
-            </div>
-
-            <div>
-                <label class="block text-sm text-gray-400">Лимит FPS обработки ИИ</label>
-                <div class="flex items-center gap-2 mt-1">
-                    <input type="range" id="input-fps" min="1" max="30" class="w-full">
-                    <span id="fps-val"
-                        class="text-sm font-mono w-8 text-right bg-gray-900 border border-gray-700 px-1 rounded">5</span>
-                </div>
-            </div>
-
-            <div class="space-y-3 pt-4 border-t border-gray-700">
-                <h4 class="text-xs font-bold text-gray-500 uppercase">Активные детекторы</h4>
-                
-                <div class="flex items-center justify-between">
-                    <label class="text-xs text-gray-300">Детекция Драк</label>
-                    <input type="checkbox" id="check-fights" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-red-600">
-                </div>
-                
-                <div class="flex items-center justify-between">
-                    <label class="text-xs text-gray-300">Детекция Буллинга</label>
-                    <input type="checkbox" id="check-bullying" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-orange-600">
-                </div>
-                
-                <div class="flex items-center justify-between">
-                    <label class="text-xs text-gray-300">Детекция Кражи</label>
-                    <input type="checkbox" id="check-theft" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-blue-600">
-                </div>
-                
-                <div class="flex items-center justify-between">
-                    <label class="text-xs text-gray-300">Счетчик Пассажиров</label>
-                    <input type="checkbox" id="check-passengers" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-green-600">
-                </div>
-                
-                <div class="flex items-center justify-between">
-                    <label class="text-xs text-gray-300">Детекция Кражи из витрины</label>
-                    <input type="checkbox" id="check-shoplifting" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-cyan-600">
-                </div>
-                
-                <div class="flex items-center justify-between">
-                    <label class="text-xs text-gray-300">Детекция Поедания на витрине</label>
-                    <input type="checkbox" id="check-eating" class="toggle-checkbox-sm h-4 w-8 rounded-full bg-gray-600 appearance-none cursor-pointer checked:bg-pink-600">
-                </div>
-            </div>
-
-            <button type="submit"
-                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded shadow transition mt-6">
-                Сохранить изменения
-            </button>
-        </form>
-
-        <div class="mt-8 pt-6 border-t border-gray-700">
-            <h4 class="text-sm font-bold text-gray-500 uppercase mb-4">Тестирование</h4>
-            <button id="btn-simulate-fight" 
-                class="w-full bg-purple-900/50 hover:bg-purple-800/50 text-purple-400 border border-purple-700 font-bold py-2 rounded shadow transition mb-2">
-                <i class="fas fa-hand-fist mr-2"></i> Симулировать Драку
-            </button>
-            <p class="text-[10px] text-gray-500 text-center">Создаст искусственное событие и отправит вебхук</p>
-        </div>
-    </div>
 </div>
 
+<!-- Панель несохранённых изменений -->
+<div id="dirty-bar" class="fixed z-30 bottom-4 left-4 right-4 lg:left-[calc(var(--sidebar-w)+1rem)] flex justify-center pointer-events-none" hidden>
+    <div class="card shadow-lg pointer-events-auto flex flex-wrap items-center gap-3 px-4 py-3 max-w-xl w-full">
+        <span class="text-medium-fg">{{ icon("alert-circle") }}</span>
+        <span class="flex-1 font-medium text-fg">Есть несохранённые изменения</span>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-reset">Отменить</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-save-bar">{{ icon("save", "icon-sm") }}Сохранить</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/vendor/hls/hls.light.min.js"></script>
 <script>
-    const camId = "{{ camera_id }}";
-    let hlsInstance = null;
-    let hlsKeepaliveTimer = null;
+    (function () {
+        const { api, escapeHtml, icon, fmt } = UI;
+        const camId = document.getElementById('camera-page').dataset.cameraId;
+        const camUrl = `/api/cameras/${encodeURIComponent(camId)}`;
+        const FLAGS = [...UI.detectors.map((d) => d.legacy_flag), 'detect_passengers'];
 
-    // UI binding
-    const fpsInput = document.getElementById('input-fps');
-    const fpsVal = document.getElementById('fps-val');
-    fpsInput.addEventListener('input', e => {
-        fpsVal.innerText = e.target.value;
-    });
+        let camera = null;
+        let saved = null;             // последнее сохранённое состояние формы
+        let zones = {};               // legacy_column -> [[x, y], ...]
+        let doors = [];               // [{ label, line: [[x, y], [x, y]] }]
+        let showZones = true;
+        let drawing = null;           // { tool, points: [] }
+        let hover = null;
 
-    async function loadDetails() {
-        const res = await fetch(`/api/cameras/${camId}`);
-        const cam = await res.json();
+        // Зоны из каталога: какие полигоны нужны детекторам и в каких колонках они хранятся.
+        const ZONE_TOOLS = [];
+        UI.detectors.forEach((d) => d.zones.forEach((z) => {
+            if (!z.legacy_column || ZONE_TOOLS.some((t) => t.field === z.legacy_column)) return;
+            ZONE_TOOLS.push({ id: z.kind, kind: 'polygon', field: z.legacy_column, title: z.title, description: z.description, colorVar: z.kind === 'cash_drawer' ? '--c-zone-cash' : '--c-zone-display' });
+        }));
+        const DOOR_TOOLS = [
+            { id: 'door_front', kind: 'line', label: 'Передняя дверь', title: 'Линия передней двери', colorVar: '--c-zone-door' },
+            { id: 'door_rear', kind: 'line', label: 'Задняя дверь', title: 'Линия задней двери', colorVar: '--c-zone-door' },
+        ];
+        const TOOLS = Object.fromEntries([...ZONE_TOOLS, ...DOOR_TOOLS].map((t) => [t.id, t]));
 
-        document.getElementById('cam-name').innerText = cam.name;
-        document.getElementById('cam-status').innerText = cam.status;
-        if (cam.status === 'online') {
-            document.getElementById('cam-status').classList.add('bg-green-600', 'text-white');
-            document.getElementById('cam-status').classList.remove('bg-gray-700');
-        } else if (cam.status === 'error') {
-            document.getElementById('cam-status').classList.add('bg-red-600', 'text-white');
-            document.getElementById('cam-status').classList.remove('bg-gray-700');
+        const parsePoints = (raw) => {
+            if (!raw) return [];
+            try {
+                const value = JSON.parse(raw);
+                return Array.isArray(value) ? value : [];
+            } catch (_) { return []; }
+        };
+        const hasZone = (field) => (zones[field] || []).length >= 3;
+        // «Зона кассы» → «зону кассы», «Линия двери» → «линию двери» для фраз «нарисовать…», «удалить…»
+        const accusative = (title) => title.replace(/^Зона /, 'зону ').replace(/^Линия /, 'линию ');
+        const doorLine = (label) => doors.find((d) => d.label === label);
+
+        /* ---------- Плеер ---------- */
+        const frame = document.getElementById('frame');
+        const video = document.getElementById('player');
+        const player = new UI.LivePlayer(video, camId, { onState: (state, detail) => {
+            frame.querySelectorAll('[data-overlay]').forEach((el) => { el.hidden = el.dataset.overlay !== state; });
+            video.hidden = !(state === 'playing' || state === 'connecting');
+            document.getElementById('live-badge').hidden = state !== 'playing';
+            document.getElementById('btn-stop').hidden = !(state === 'playing' || state === 'connecting');
+            if (state === 'error') frame.querySelector('[data-error-text]').textContent = detail || '';
+            redraw();
+        } });
+        frame.addEventListener('click', (event) => {
+            const action = event.target.closest('[data-action]');
+            if (!action) return;
+            if (action.dataset.action === 'replay') player.start();
+            if (action.dataset.action === 'stop') player.stop();
+        });
+        video.addEventListener('loadedmetadata', redraw);
+
+        /* ---------- Холст зон ---------- */
+        const canvas = document.getElementById('zones-canvas');
+        const ctx = canvas.getContext('2d');
+        const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#fff';
+
+        // Область, которую реально занимает картинка (video object-fit: contain).
+        function contentBox() {
+            const W = canvas.clientWidth;
+            const H = canvas.clientHeight;
+            if (video.hidden || !video.videoWidth || !video.videoHeight) return { x: 0, y: 0, w: W, h: H };
+            const scale = Math.min(W / video.videoWidth, H / video.videoHeight);
+            const w = video.videoWidth * scale;
+            const h = video.videoHeight * scale;
+            return { x: (W - w) / 2, y: (H - h) / 2, w, h };
         }
 
-        document.getElementById('input-name').value = cam.name;
-        document.getElementById('input-enabled').checked = cam.enabled;
-        document.getElementById('input-ai').checked = cam.ai_enabled;
-        document.getElementById('input-fps').value = cam.fps_limit;
-        fpsVal.innerText = cam.fps_limit;
+        function toPx(point, box) {
+            return [box.x + point[0] * box.w, box.y + point[1] * box.h];
+        }
 
-        document.getElementById('check-fights').checked = cam.detect_fights;
-        document.getElementById('check-bullying').checked = cam.detect_bullying;
-        document.getElementById('check-theft').checked = cam.detect_theft;
-        document.getElementById('check-passengers').checked = cam.detect_passengers;
-        document.getElementById('check-shoplifting').checked = cam.detect_shoplifting;
-        document.getElementById('check-eating').checked = cam.detect_eating;
-        
-        // Hide/show drawing buttons based on features
-        updateDrawingButtons();
+        function drawLabel(text, x, y, color) {
+            ctx.font = '600 12px ' + cssVar('--font-sans-stack');
+            const w = ctx.measureText(text).width + 12;
+            const top = Math.max(2, y - 24);
+            ctx.fillStyle = 'rgba(8, 11, 17, 0.82)';
+            ctx.beginPath();
+            ctx.roundRect(x, top, w, 20, 5);
+            ctx.fill();
+            ctx.fillStyle = color;
+            ctx.fillRect(x, top, 3, 20);
+            ctx.fillStyle = '#f1f5f9';
+            ctx.fillText(text, x + 7, top + 14);
+        }
 
-        if (cam.theft_zone) {
-            camTheftZone = JSON.parse(cam.theft_zone);
-            if (camTheftZone.length > 0) {
-                document.getElementById('theft-canvas').classList.remove('hidden');
-                document.getElementById('btn-clear-roi').classList.remove('hidden');
+        function drawPolygon(points, color, label, open) {
+            if (!points.length) return;
+            const box = contentBox();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            points.forEach((p, i) => {
+                const [x, y] = toPx(p, box);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            if (open && hover) ctx.lineTo(...toPx(hover, box));
+            if (!open && points.length > 2) {
+                ctx.closePath();
+                ctx.globalAlpha = 0.18;
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+            ctx.setLineDash(open ? [6, 5] : []);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            points.forEach((p, i) => {
+                const [x, y] = toPx(p, box);
+                ctx.beginPath();
+                ctx.arc(x, y, open && i === 0 ? 6 : 4, 0, Math.PI * 2);
+                ctx.fillStyle = open && i === 0 ? '#fff' : color;
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = color;
+                ctx.stroke();
+            });
+            if (label) {
+                const [x, y] = toPx(points[0], box);
+                drawLabel(label, x + 6, y, color);
             }
         }
 
-        if (cam.counting_config) {
-            camCountingConfig = JSON.parse(cam.counting_config);
-            if (camCountingConfig.length > 0) {
-                document.getElementById('theft-canvas').classList.remove('hidden');
-                document.getElementById('btn-clear-roi').classList.remove('hidden');
+        function drawLine(line, color, label, open) {
+            if (!line.length) return;
+            const box = contentBox();
+            const pts = open && hover && line.length === 1 ? [line[0], hover] : line;
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = color;
+            ctx.setLineDash(open ? [6, 5] : []);
+            ctx.beginPath();
+            pts.forEach((p, i) => {
+                const [x, y] = toPx(p, box);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            ctx.setLineDash([]);
+            line.forEach((p) => {
+                const [x, y] = toPx(p, box);
+                ctx.beginPath();
+                ctx.arc(x, y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+            });
+            if (label) {
+                const [x, y] = toPx(line[0], box);
+                drawLabel(label, x + 6, y, color);
             }
         }
 
-        if (cam.display_zone) {
-            camDisplayZone = JSON.parse(cam.display_zone);
-            if (camDisplayZone.length > 0) {
-                document.getElementById('theft-canvas').classList.remove('hidden');
-                document.getElementById('btn-clear-roi').classList.remove('hidden');
-            }
-        }
-        
-        setTimeout(redrawCanvas, 100);
-
-        // Trigger HLS conversion
-        try {
-            const hlsRes = await fetch(`/api/cameras/${camId}/trigger-hls`, { method: 'POST' });
-            const data = await hlsRes.json();
-            startHlsKeepalive();
-            initHls(data.hls_url);
-        } catch (e) {
-            showPlayerError();
-        }
-    }
-
-    function initHls(url) {
-        const video = document.getElementById('hls-player');
-        const loading = document.getElementById('player-loading');
-
-        // Wait 3 seconds for ffmpeg to create index.m3u8
-        setTimeout(() => {
-            if (Hls.isSupported()) {
-                if (hlsInstance) {
-                    hlsInstance.destroy();
-                }
-                hlsInstance = new Hls({
-                    maxBufferLength: 5,
-                    maxMaxBufferLength: 10,
+        function redraw() {
+            const dpr = window.devicePixelRatio || 1;
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            if (!w || !h) return;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            if (showZones || drawing) {
+                ZONE_TOOLS.forEach((tool) => {
+                    if (drawing && drawing.tool.id === tool.id) return;
+                    drawPolygon(zones[tool.field] || [], cssVar(tool.colorVar), tool.title, false);
                 });
-                hlsInstance.loadSource(url);
-                hlsInstance.attachMedia(video);
-                hlsInstance.on(Hls.Events.MANIFEST_PARSED, function () {
-                    loading.classList.add('hidden');
-                    video.classList.remove('hidden');
-                    video.play().catch(() => console.log('Autoplay prevented'));
+                doors.forEach((door) => {
+                    if (drawing && drawing.tool.label === door.label) return;
+                    drawLine(door.line || [], cssVar('--c-zone-door'), door.label, false);
                 });
-                hlsInstance.on(Hls.Events.ERROR, function (event, data) {
-                    if (data.fatal) {
-                        switch (data.type) {
-                            case Hls.ErrorTypes.NETWORK_ERROR:
-                                // try to recover network error
-                                console.log("fatal network error encountered, try to recover");
-                                hlsInstance.startLoad();
-                                break;
-                            case Hls.ErrorTypes.MEDIA_ERROR:
-                                console.log("fatal media error encountered, try to recover");
-                                hlsInstance.recoverMediaError();
-                                break;
-                            default:
-                                // cannot recover
-                                stopHlsKeepalive();
-                                hlsInstance.destroy();
-                                showPlayerError();
-                                break;
-                        }
+            }
+            if (drawing) {
+                const color = cssVar(drawing.tool.colorVar);
+                if (drawing.tool.kind === 'polygon') drawPolygon(drawing.points, color, drawing.tool.title, true);
+                else drawLine(drawing.points, color, drawing.tool.label, true);
+            }
+        }
+        new ResizeObserver(redraw).observe(frame);
+        document.addEventListener('ui:themechange', redraw);
+
+        function eventPoint(event) {
+            const rect = canvas.getBoundingClientRect();
+            const box = contentBox();
+            const clamp = (v) => Math.min(1, Math.max(0, v));
+            return [clamp((event.clientX - rect.left - box.x) / box.w), clamp((event.clientY - rect.top - box.y) / box.h)];
+        }
+
+        canvas.addEventListener('pointerdown', (event) => {
+            if (!drawing) return;
+            event.preventDefault();
+            const point = eventPoint(event);
+            const tool = drawing.tool;
+            if (tool.kind === 'line' && drawing.points.length >= 2) return;
+            if (tool.kind === 'polygon' && drawing.points.length >= 3) {
+                // Клик рядом с первой точкой замыкает полигон
+                const box = contentBox();
+                const [fx, fy] = toPx(drawing.points[0], box);
+                const [px, py] = toPx(point, box);
+                if (Math.hypot(fx - px, fy - py) < 12) { finishDrawing(); return; }
+            }
+            const last = drawing.points[drawing.points.length - 1];
+            if (last) {
+                // Двойной клик не должен ставить две одинаковые вершины
+                const box = contentBox();
+                const [lx, ly] = toPx(last, box);
+                const [px, py] = toPx(point, box);
+                if (Math.hypot(lx - px, ly - py) < 4) return;
+            }
+            drawing.points.push(point);
+            updateDrawBanner();
+            redraw();
+        });
+        canvas.addEventListener('pointermove', (event) => {
+            if (!drawing) return;
+            hover = eventPoint(event);
+            redraw();
+        });
+        canvas.addEventListener('pointerleave', () => { hover = null; redraw(); });
+
+        function updateDrawBanner() {
+            const tool = drawing.tool;
+            const n = drawing.points.length;
+            const need = tool.kind === 'polygon' ? 3 : 2;
+            document.getElementById('draw-title').textContent = `Рисуем ${accusative(tool.title)}`;
+            document.getElementById('draw-help').textContent = tool.kind === 'polygon'
+                ? `Кликайте по кадру, чтобы поставить вершины (нужно минимум 3, поставлено ${n}). Клик по первой точке замыкает зону.`
+                : `Поставьте две точки: начало и конец линии двери (поставлено ${n} из 2).`;
+            document.getElementById('btn-draw-save').disabled = n < need;
+            document.getElementById('btn-draw-undo').disabled = n === 0;
+        }
+
+        function startDrawing(toolId) {
+            if (!camera) return;
+            drawing = { tool: TOOLS[toolId], points: [] };
+            hover = null;
+            canvas.classList.remove('pointer-events-none');
+            canvas.style.cursor = 'crosshair';
+            document.getElementById('draw-banner').hidden = false;
+            document.querySelectorAll('[data-draw]').forEach((b) => { b.disabled = true; });
+            updateDrawBanner();
+            redraw();
+            document.getElementById('player-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.getElementById('btn-draw-cancel').focus({ preventScroll: true });
+        }
+
+        function stopDrawing() {
+            drawing = null;
+            hover = null;
+            canvas.classList.add('pointer-events-none');
+            canvas.style.cursor = '';
+            document.getElementById('draw-banner').hidden = true;
+            renderZones();
+            renderDoors();
+            redraw();
+        }
+
+        async function finishDrawing() {
+            const { tool, points } = drawing;
+            const rounded = points.map(([x, y]) => [Math.round(x * 10000) / 10000, Math.round(y * 10000) / 10000]);
+            const payload = {};
+            const prevZones = { ...zones };
+            const prevDoors = doors.map((d) => ({ ...d }));
+            if (tool.kind === 'polygon') {
+                zones[tool.field] = rounded;
+                payload[tool.field] = JSON.stringify(rounded);
+            } else {
+                const existing = doorLine(tool.label);
+                if (existing) existing.line = rounded; else doors.push({ label: tool.label, line: rounded });
+                payload.counting_config = JSON.stringify(doors);
+            }
+            stopDrawing();
+            try {
+                await api(camUrl, { method: 'PATCH', json: payload });
+                UI.toast(`${tool.title} сохранена`, { title: 'Разметка обновлена' });
+            } catch (error) {
+                zones = prevZones;
+                doors = prevDoors;
+                stopDrawing();
+                UI.toast(error.message, { type: 'error', title: 'Не удалось сохранить разметку' });
+            }
+            renderDetectors();
+        }
+
+        async function clearTool(toolId) {
+            const tool = TOOLS[toolId];
+            const ok = await UI.confirm({ title: `Удалить ${accusative(tool.title)}?`, message: tool.kind === 'polygon' ? 'Детекторы, которым нужна эта зона, будут срабатывать по всему кадру.' : 'Подсчёт через эту дверь остановится.', confirmText: 'Удалить' });
+            if (!ok) return;
+            const payload = {};
+            if (tool.kind === 'polygon') {
+                zones[tool.field] = [];
+                payload[tool.field] = '[]';
+            } else {
+                doors = doors.filter((d) => d.label !== tool.label);
+                payload.counting_config = JSON.stringify(doors);
+            }
+            try {
+                await api(camUrl, { method: 'PATCH', json: payload });
+                UI.toast(`${tool.title} удалена`);
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось удалить разметку' });
+                await loadCamera();
+            }
+            renderZones();
+            renderDoors();
+            renderDetectors();
+            redraw();
+        }
+
+        document.getElementById('btn-draw-save').addEventListener('click', finishDrawing);
+        document.getElementById('btn-draw-cancel').addEventListener('click', stopDrawing);
+        document.getElementById('btn-draw-undo').addEventListener('click', () => {
+            drawing?.points.pop();
+            updateDrawBanner();
+            redraw();
+        });
+        document.addEventListener('keydown', (event) => {
+            if (!drawing || event.target.closest('input, textarea, select, dialog')) return;
+            if (event.key === 'Escape') { event.preventDefault(); stopDrawing(); }
+            if (event.key === 'Backspace') { event.preventDefault(); drawing.points.pop(); updateDrawBanner(); redraw(); }
+            if (event.key === 'Enter' && !document.getElementById('btn-draw-save').disabled) { event.preventDefault(); finishDrawing(); }
+        });
+        document.getElementById('btn-toggle-zones').addEventListener('click', (event) => {
+            showZones = !showZones;
+            event.currentTarget.setAttribute('aria-pressed', String(showZones));
+            event.currentTarget.innerHTML = icon(showZones ? 'eye' : 'eye', 'icon-xs') + (showZones ? 'Зоны' : 'Зоны скрыты');
+            redraw();
+        });
+
+        /* ---------- Разметка: списки ---------- */
+        function zoneUsers(field) {
+            return UI.detectors.filter((d) => d.zones.some((z) => z.legacy_column === field));
+        }
+
+        function renderZones() {
+            document.getElementById('zone-list').innerHTML = ZONE_TOOLS.map((tool) => {
+                const ok = hasZone(tool.field);
+                const users = zoneUsers(tool.field);
+                const enabledUsers = users.filter((d) => currentForm()[d.legacy_flag]);
+                return `<li class="rounded-lg border border-line bg-surface-2 p-3.5 flex flex-col gap-2.5">
+                    <div class="flex items-start gap-3">
+                        <span class="mt-1 h-3 w-3 rounded-sm shrink-0" style="background: var(${tool.colorVar})" aria-hidden="true"></span>
+                        <div class="min-w-0 flex-1">
+                            <div class="font-semibold text-fg">${escapeHtml(tool.title)}</div>
+                            <div class="text-xs text-subtle">Для: ${users.map((d) => escapeHtml(d.title)).join(', ')}</div>
+                        </div>
+                        ${ok ? `<span class="badge badge-success badge-sm">${icon('check', 'icon-xs')}${zones[tool.field].length} точ.</span>`
+                             : `<span class="badge ${enabledUsers.length ? 'badge-medium' : 'badge-outline'} badge-sm">Не задана</span>`}
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" class="btn btn-secondary btn-sm flex-1" data-draw="${tool.id}">${icon('polygon', 'icon-sm')}${ok ? 'Перерисовать' : 'Нарисовать'}</button>
+                        ${ok ? `<button type="button" class="btn btn-ghost btn-sm btn-icon text-critical-fg" data-clear="${tool.id}" aria-label="Удалить ${escapeHtml(accusative(tool.title))}">${icon('trash', 'icon-sm')}</button>` : ''}
+                    </div>
+                </li>`;
+            }).join('');
+        }
+
+        function renderDoors() {
+            document.getElementById('door-list').innerHTML = DOOR_TOOLS.map((tool) => {
+                const ok = Boolean(doorLine(tool.label)?.line?.length >= 2);
+                return `<li class="flex items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2">
+                    ${icon('door', 'icon-sm text-subtle')}
+                    <span class="flex-1 min-w-0">
+                        <span class="block text-sm font-medium text-fg">${escapeHtml(tool.label)}</span>
+                        <span class="block text-xs ${ok ? 'text-success-fg' : 'text-subtle'}">${ok ? 'Линия задана' : 'Линии нет'}</span>
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-xs" data-draw="${tool.id}">${icon('line', 'icon-xs')}${ok ? 'Изменить' : 'Нарисовать'}</button>
+                    ${ok ? `<button type="button" class="btn btn-ghost btn-xs btn-icon text-critical-fg" data-clear="${tool.id}" aria-label="Удалить ${escapeHtml(accusative(tool.title))}">${icon('trash', 'icon-xs')}</button>` : ''}
+                </li>`;
+            }).join('');
+        }
+
+        document.addEventListener('click', (event) => {
+            const draw = event.target.closest('[data-draw]');
+            if (draw && !draw.disabled) startDrawing(draw.dataset.draw);
+            const clear = event.target.closest('[data-clear]');
+            if (clear) clearTool(clear.dataset.clear);
+        });
+
+        /* ---------- Детекторы ---------- */
+        function renderDetectors() {
+            const form = currentForm();
+            const enabled = UI.detectors.filter((d) => form[d.legacy_flag]);
+            document.getElementById('detectors-count').textContent = `${enabled.length} из ${UI.detectors.length} включено`;
+            document.getElementById('ai-off-alert').hidden = form.ai_enabled;
+            document.getElementById('detector-list').innerHTML = UI.detectors.map((d) => {
+                const on = Boolean(form[d.legacy_flag]);
+                const maturity = UI.MATURITY[d.maturity] || UI.MATURITY.concept;
+                const notes = [];
+                d.zones.forEach((z) => {
+                    if (!z.legacy_column) return;
+                    if (hasZone(z.legacy_column)) {
+                        notes.push(`<span class="inline-flex items-center gap-1.5 text-success-fg">${icon('check-circle', 'icon-xs')}${escapeHtml(z.title)} задана</span>`);
+                    } else {
+                        notes.push(`<span class="flex flex-wrap items-center gap-x-2 gap-y-1 ${on ? 'text-medium-fg' : 'text-subtle'}">
+                            <span class="inline-flex items-center gap-1.5">${icon('alert-triangle', 'icon-xs')}Нет зоны: детектор сработает по всему кадру</span>
+                            <button type="button" class="link text-xs" data-draw="${escapeHtml(z.kind)}">Нарисовать ${escapeHtml(accusative(z.title))}</button>
+                        </span>`);
                     }
                 });
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = url;
-                video.addEventListener('loadedmetadata', function () {
-                    loading.classList.add('hidden');
-                    video.classList.remove('hidden');
-                    video.play();
+                d.external_events.forEach((ext) => {
+                    notes.push(`<span class="inline-flex items-start gap-1.5 text-subtle">${icon('plug', 'icon-xs mt-0.5')}<span>Нужен поток событий кассы (${escapeHtml(ext.kind.toUpperCase())}). Пока интеграции нет, работает только по позам.</span></span>`);
                 });
-            } else {
-                showPlayerError();
-            }
-        }, 3000); // Artificial delay to ensure first segment is created
-    }
-
-    function showPlayerError() {
-        document.getElementById('player-loading').classList.add('hidden');
-        document.getElementById('hls-player').classList.add('hidden');
-        document.getElementById('player-error').classList.remove('hidden');
-    }
-
-    function startHlsKeepalive() {
-        stopHlsKeepalive();
-        hlsKeepaliveTimer = setInterval(() => {
-            fetch(`/api/cameras/${camId}/hls-keepalive`, { method: 'POST', keepalive: true }).catch(() => {});
-        }, 30000);
-    }
-
-    function stopHlsKeepalive() {
-        if (hlsKeepaliveTimer) {
-            clearInterval(hlsKeepaliveTimer);
-            hlsKeepaliveTimer = null;
-        }
-    }
-
-    window.addEventListener('beforeunload', () => {
-        stopHlsKeepalive();
-        if (navigator.sendBeacon) {
-            navigator.sendBeacon(`/api/cameras/${camId}/stop-hls`, new Blob([]));
-        } else {
-            fetch(`/api/cameras/${camId}/stop-hls`, { method: 'POST', keepalive: true }).catch(() => {});
-        }
-    });
-
-    document.getElementById('cam-settings-form').addEventListener('submit', async e => {
-        e.preventDefault();
-        const data = {
-            name: document.getElementById('input-name').value,
-            enabled: document.getElementById('input-enabled').checked,
-            ai_enabled: document.getElementById('input-ai').checked,
-            fps_limit: parseInt(document.getElementById('input-fps').value),
-            detect_fights: document.getElementById('check-fights').checked,
-            detect_bullying: document.getElementById('check-bullying').checked,
-            detect_theft: document.getElementById('check-theft').checked,
-            detect_passengers: document.getElementById('check-passengers').checked,
-            detect_shoplifting: document.getElementById('check-shoplifting').checked,
-            detect_eating: document.getElementById('check-eating').checked
-        };
-
-        const btn = e.target.querySelector('button');
-        const oldText = btn.innerText;
-        btn.innerText = 'Сохранение...';
-        btn.classList.add('opacity-50', 'cursor-not-allowed');
-
-        await fetch(`/api/cameras/${camId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-
-        btn.innerText = 'Сохранено!';
-        btn.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-blue-600');
-        btn.classList.add('bg-green-600');
-        setTimeout(() => {
-            btn.innerText = oldText;
-            btn.classList.add('bg-blue-600');
-            btn.classList.remove('bg-green-600');
-        }, 2000);
-    });
-
-    document.getElementById('btn-simulate-fight').addEventListener('click', async () => {
-        if (!confirm('Вы уверены, что хотите запустить симуляцию детекции драки?')) return;
-        
-        try {
-            const res = await fetch(`/api/events/test-trigger?camera_id=${camId}&event_type=fight_suspected`, {
-                method: 'POST'
-            });
-            const data = await res.json();
-            alert(`Симуляция запущена! Создано событие: ${data.id}. Проверьте дашборд и ваши вебхуки.`);
-        } catch (e) {
-            alert(`Ошибка симуляции: ${e}`);
-        }
-    });
-
-    // ROI Canvas Logic
-    let camTheftZone = [];
-    let camDisplayZone = []; // Polygon for display case zone
-    let camCountingConfig = []; // Array of {label, line: [[x1, y1], [x2, y2]]}
-    
-    let isDrawing = false;
-    let drawingType = 'roi'; // 'roi', 'display', 'front', 'rear'
-    let tempPoints = [];
-
-    const canvas = document.getElementById('theft-canvas');
-    const ctx = canvas.getContext('2d');
-
-    function resizeCanvas() {
-        if(canvas.clientWidth > 0) {
-            canvas.width = canvas.clientWidth;
-            canvas.height = canvas.clientHeight;
-        } else {
-            canvas.width = 800; canvas.height = 450;
-        }
-    }
-
-    function redrawCanvas() {
-        resizeCanvas();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Draw ROI (Polygons)
-        let pts = (isDrawing && drawingType === 'roi') ? tempPoints : camTheftZone;
-        if (pts.length > 0) {
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0] * canvas.width, pts[0][1] * canvas.height);
-            for (let i = 1; i < pts.length; i++) {
-                ctx.lineTo(pts[i][0] * canvas.width, pts[i][1] * canvas.height);
-            }
-            if (!isDrawing && pts.length > 2) {
-                ctx.closePath();
-                ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; 
-                ctx.fill();
-            }
-            ctx.strokeStyle = '#EF4444'; 
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            pts.forEach(p => {
-                ctx.beginPath();
-                ctx.arc(p[0] * canvas.width, p[1] * canvas.height, 4, 0, 2 * Math.PI);
-                ctx.fillStyle = '#EF4444'; ctx.fill(); ctx.stroke();
-            });
-        }
-
-        // Draw Display Zone (Cyan polygon)
-        let displayPts = (isDrawing && drawingType === 'display') ? tempPoints : camDisplayZone;
-        if (displayPts.length > 0) {
-            ctx.beginPath();
-            ctx.moveTo(displayPts[0][0] * canvas.width, displayPts[0][1] * canvas.height);
-            for (let i = 1; i < displayPts.length; i++) {
-                ctx.lineTo(displayPts[i][0] * canvas.width, displayPts[i][1] * canvas.height);
-            }
-            if (!isDrawing && displayPts.length > 2) {
-                ctx.closePath();
-                ctx.fillStyle = 'rgba(6, 182, 212, 0.2)';
-                ctx.fill();
-            }
-            ctx.strokeStyle = '#06B6D4';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            displayPts.forEach(p => {
-                ctx.beginPath();
-                ctx.arc(p[0] * canvas.width, p[1] * canvas.height, 4, 0, 2 * Math.PI);
-                ctx.fillStyle = '#06B6D4'; ctx.fill(); ctx.stroke();
-            });
-        }
-
-        // Draw Counting Lines
-        camCountingConfig.forEach(door => {
-            const l = door.line;
-            ctx.beginPath();
-            ctx.moveTo(l[0][0] * canvas.width, l[0][1] * canvas.height);
-            ctx.lineTo(l[1][0] * canvas.width, l[1][1] * canvas.height);
-            ctx.strokeStyle = '#10B981'; ctx.lineWidth = 3; ctx.stroke();
-            
-            ctx.fillStyle = '#10B981'; ctx.font = '10px Arial';
-            ctx.fillText(door.label, l[0][0] * canvas.width, l[0][1] * canvas.height - 5);
-        });
-
-        // Draw active line if drawing door
-        if (isDrawing && (drawingType === 'front' || drawingType === 'rear')) {
-            if (tempPoints.length > 0) {
-                ctx.beginPath();
-                ctx.arc(tempPoints[0][0] * canvas.width, tempPoints[0][1] * canvas.height, 5, 0, 2 * Math.PI);
-                ctx.fillStyle = '#10B981'; ctx.fill();
-                
-                // Live preview line to mouse
-                if (tempPoints.length === 1 && lastMousePos) {
-                    ctx.beginPath();
-                    ctx.moveTo(tempPoints[0][0] * canvas.width, tempPoints[0][1] * canvas.height);
-                    ctx.lineTo(lastMousePos.x * canvas.width, lastMousePos.y * canvas.height);
-                    ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)'; ctx.setLineDash([5, 5]); ctx.stroke();
-                    ctx.setLineDash([]);
+                if (on && form.fps_limit < d.min_fps) {
+                    notes.push(`<span class="inline-flex items-center gap-1.5 text-medium-fg">${icon('gauge', 'icon-xs')}Нужно от ${d.min_fps} кадр/с, сейчас ${form.fps_limit}</span>`);
                 }
-            }
-            if (tempPoints.length === 2) {
-                ctx.beginPath();
-                ctx.moveTo(tempPoints[0][0] * canvas.width, tempPoints[0][1] * canvas.height);
-                ctx.lineTo(tempPoints[1][0] * canvas.width, tempPoints[1][1] * canvas.height);
-                ctx.strokeStyle = '#10B981'; ctx.lineWidth = 3; ctx.setLineDash([5, 5]); // Dash for preview
-                ctx.stroke();
-                ctx.setLineDash([]); // Reset
-                
-                ctx.beginPath();
-                ctx.arc(tempPoints[1][0] * canvas.width, tempPoints[1][1] * canvas.height, 5, 0, 2 * Math.PI);
-                ctx.fillStyle = '#10B981'; ctx.fill();
-            }
-        }
-    }
-
-    window.addEventListener('resize', redrawCanvas);
-
-    document.getElementById('btn-draw-roi').addEventListener('click', () => {
-        isDrawing = true; drawingType = 'roi';
-        startDrawing();
-    });
-
-    document.getElementById('btn-draw-display').addEventListener('click', () => {
-        isDrawing = true; drawingType = 'display';
-        startDrawing();
-    });
-
-    document.getElementById('btn-draw-front').addEventListener('click', () => {
-        isDrawing = true; drawingType = 'front';
-        startDrawing();
-    });
-
-    document.getElementById('btn-draw-rear').addEventListener('click', () => {
-        isDrawing = true; drawingType = 'rear';
-        startDrawing();
-    });
-
-    function startDrawing() {
-        tempPoints = [];
-        canvas.classList.remove('hidden', 'pointer-events-none');
-        document.querySelectorAll('#roi-controls button').forEach(b => b.classList.add('hidden'));
-        document.getElementById('btn-save-roi').classList.remove('hidden');
-        resizeCanvas();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-
-    let lastMousePos = null;
-    canvas.addEventListener('mousemove', (e) => {
-        if (!isDrawing) return;
-        const rect = canvas.getBoundingClientRect();
-        lastMousePos = {
-            x: (e.clientX - rect.left) / canvas.width,
-            y: (e.clientY - rect.top) / canvas.height
-        };
-        if (tempPoints.length > 0) redrawCanvas();
-    });
-
-    canvas.addEventListener('click', (e) => {
-        if (!isDrawing) return;
-        const rect = canvas.getBoundingClientRect();
-        const x = (e.clientX - rect.left) / canvas.width;
-        const y = (e.clientY - rect.top) / canvas.height;
-        
-        if ((drawingType === 'front' || drawingType === 'rear') && tempPoints.length >= 2) {
-            return; // Only 2 points for doors
-        }
-        
-        tempPoints.push([x, y]);
-        redrawCanvas();
-
-        if ((drawingType === 'front' || drawingType === 'rear') && tempPoints.length === 2) {
-            // Auto finish for lines? No, let user confirm with save button
-        }
-    });
-
-    document.getElementById('btn-save-roi').addEventListener('click', async () => {
-        if ((drawingType === 'roi' || drawingType === 'display') && tempPoints.length < 3) {
-            alert('Пожалуйста, поставьте минимум 3 точки для создания зоны.'); return;
-        }
-        if ((drawingType === 'front' || drawingType === 'rear') && tempPoints.length < 2) {
-            alert('Пожалуйста, поставьте 2 точки для линии двери.'); return;
+                return `<li class="detector" data-enabled="${on}">
+                    <span class="detector-icon ${UI.SEVERITY[d.severity].text}">${icon(d.icon)}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <label for="det-${d.id}" class="font-semibold text-fg cursor-pointer">${escapeHtml(d.title)}</label>
+                            <span class="badge badge-sm ${maturity.badge}" title="${escapeHtml(maturity.hint)}">${maturity.label}</span>
+                        </div>
+                        <p class="text-xs text-muted mt-1" id="det-desc-${d.id}">${escapeHtml(d.description)}</p>
+                        ${notes.length ? `<div class="mt-2 flex flex-col gap-1 text-xs">${notes.join('')}</div>` : ''}
+                    </div>
+                    <input type="checkbox" role="switch" class="switch shrink-0" id="det-${d.id}" data-flag="${d.legacy_flag}" aria-describedby="det-desc-${d.id}" ${on ? 'checked' : ''}>
+                </li>`;
+            }).join('');
+            renderZones();
+            updateFpsHint();
         }
 
-        const data = {};
-        if (drawingType === 'roi') {
-            camTheftZone = tempPoints;
-            data.theft_zone = JSON.stringify(camTheftZone);
-        } else if (drawingType === 'display') {
-            camDisplayZone = tempPoints;
-            data.display_zone = JSON.stringify(camDisplayZone);
-        } else {
-            const label = drawingType === 'front' ? 'Передняя дверь' : 'Задняя дверь';
-            // Update or add to config
-            let existing = camCountingConfig.find(d => d.label === label);
-            if (existing) {
-                existing.line = tempPoints;
+        document.getElementById('detector-list').addEventListener('change', (event) => {
+            const sw = event.target.closest('[data-flag]');
+            if (!sw) return;
+            formState[sw.dataset.flag] = sw.checked;
+            renderDetectors();
+            document.getElementById(sw.id)?.focus();
+            updateDirty();
+        });
+
+        /* ---------- Форма настроек ---------- */
+        const formState = {};
+
+        function currentForm() {
+            return {
+                name: document.getElementById('input-name').value.trim(),
+                enabled: document.getElementById('input-enabled').checked,
+                ai_enabled: document.getElementById('input-ai').checked,
+                fps_limit: Number(document.getElementById('input-fps').value),
+                detect_passengers: document.getElementById('input-passengers').checked,
+                ...Object.fromEntries(UI.detectors.map((d) => [d.legacy_flag, Boolean(formState[d.legacy_flag])])),
+            };
+        }
+
+        function fillForm(state) {
+            document.getElementById('input-name').value = state.name || '';
+            document.getElementById('input-enabled').checked = Boolean(state.enabled);
+            document.getElementById('input-ai').checked = Boolean(state.ai_enabled);
+            document.getElementById('input-fps').value = state.fps_limit || 5;
+            document.getElementById('input-passengers').checked = Boolean(state.detect_passengers);
+            UI.detectors.forEach((d) => { formState[d.legacy_flag] = Boolean(state[d.legacy_flag]); });
+            renderDetectors();
+            updateDirty();
+        }
+
+        function updateFpsHint() {
+            const form = currentForm();
+            document.getElementById('fps-value').textContent = `${form.fps_limit} кадр/с`;
+            const needed = Math.max(0, ...UI.detectors.filter((d) => form[d.legacy_flag]).map((d) => d.min_fps));
+            const hint = document.getElementById('fps-hint');
+            if (needed && form.fps_limit < needed) {
+                hint.className = 'hint text-medium-fg';
+                hint.textContent = `Включённым детекторам нужно не меньше ${needed} кадр/с: модели обучены на этой частоте.`;
             } else {
-                camCountingConfig.push({ label: label, line: tempPoints });
+                hint.className = 'hint';
+                hint.textContent = needed ? `Рекомендуется ${needed} кадр/с: на этой частоте обучены модели.` : 'Сколько кадров в секунду отдаётся детекторам.';
             }
-            data.counting_config = JSON.stringify(camCountingConfig);
         }
 
-        isDrawing = false;
-        canvas.classList.add('pointer-events-none');
-        document.querySelectorAll('#roi-controls button').forEach(b => b.classList.remove('hidden'));
-        document.getElementById('btn-save-roi').classList.add('hidden');
-        redrawCanvas();
-        updateDrawingButtons();
+        function isDirty() {
+            if (!saved) return false;
+            const form = currentForm();
+            return Object.keys(saved).some((k) => saved[k] !== form[k]);
+        }
 
-        await fetch(`/api/cameras/${camId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+        function updateDirty() {
+            document.getElementById('dirty-bar').hidden = !isDirty();
+        }
+
+        ['input-name', 'input-enabled', 'input-ai', 'input-fps', 'input-passengers'].forEach((id) => {
+            const el = document.getElementById(id);
+            el.addEventListener('input', () => { updateFpsHint(); updateDirty(); });
+            el.addEventListener('change', () => { if (id === 'input-ai' || id === 'input-fps') renderDetectors(); updateDirty(); });
         });
-    });
 
-    document.getElementById('btn-clear-roi').addEventListener('click', async () => {
-        if (!confirm('Сбросить все зоны и линии для этой камеры?')) return;
-        camTheftZone = [];
-        camDisplayZone = [];
-        camCountingConfig = [];
-        isDrawing = false;
-        canvas.classList.add('hidden', 'pointer-events-none');
-        redrawCanvas();
+        async function save() {
+            const form = currentForm();
+            const nameInput = document.getElementById('input-name');
+            if (!form.name) {
+                nameInput.setAttribute('aria-invalid', 'true');
+                nameInput.focus();
+                UI.toast('Укажите название камеры', { type: 'error' });
+                return;
+            }
+            nameInput.removeAttribute('aria-invalid');
+            const buttons = [document.getElementById('btn-save'), document.getElementById('btn-save-bar')];
+            buttons.forEach((b) => UI.setBusy(b, true, 'Сохранение…'));
+            try {
+                await api(camUrl, { method: 'PATCH', json: form });
+                saved = { ...form };
+                camera = { ...camera, ...form };
+                renderHeader();
+                UI.toast('Настройки камеры сохранены');
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось сохранить' });
+            } finally {
+                buttons.forEach((b) => UI.setBusy(b, false));
+                updateDirty();
+            }
+        }
 
-        await fetch(`/api/cameras/${camId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theft_zone: null, counting_config: null, display_zone: null })
+        document.getElementById('settings-form').addEventListener('submit', (event) => { event.preventDefault(); save(); });
+        document.getElementById('btn-save-bar').addEventListener('click', save);
+        document.getElementById('btn-reset').addEventListener('click', () => fillForm(saved));
+        window.addEventListener('beforeunload', (event) => {
+            if (isDirty()) { event.preventDefault(); event.returnValue = ''; }
         });
-    });
 
-    function updateDrawingButtons() {
-        const isTheft = document.getElementById('check-theft').checked;
-        const isPass = document.getElementById('check-passengers').checked;
-        const isShoplift = document.getElementById('check-shoplifting').checked;
-        const isEating = document.getElementById('check-eating').checked;
-        
-        document.getElementById('btn-draw-roi').style.display = isTheft ? 'inline-block' : 'none';
-        document.getElementById('btn-draw-display').style.display = (isShoplift || isEating) ? 'inline-block' : 'none';
-        document.getElementById('btn-draw-front').style.display = isPass ? 'inline-block' : 'none';
-        document.getElementById('btn-draw-rear').style.display = isPass ? 'inline-block' : 'none';
-    }
+        /* ---------- Шапка, подключение, автобус ---------- */
+        function renderHeader() {
+            document.title = `${camera.name} · AI Box`;
+            document.getElementById('cam-title').textContent = camera.name;
+            document.getElementById('crumb-name').textContent = camera.name;
+            document.getElementById('cam-status').innerHTML = UI.cameraStatusBadge(camera.status);
+            const parts = [`Канал ${camera.channel ?? '—'}`, camera.nvr_ip ? `NVR ${camera.nvr_ip}` : null, camera.last_seen ? `на связи ${fmt.relative(camera.last_seen)}` : 'ещё не выходила на связь'];
+            if (!camera.enabled) parts.push('камера отключена');
+            document.getElementById('cam-subtitle').textContent = parts.filter(Boolean).join(' · ');
+            document.getElementById('connection-info').innerHTML = `
+                <div class="flex justify-between gap-3"><dt class="text-subtle">RTSP</dt><dd class="mono text-fg text-right break-all">${escapeHtml(camera.rtsp_url || '—')}</dd></div>
+                <div class="flex justify-between gap-3"><dt class="text-subtle">Пользователь</dt><dd class="text-fg">${escapeHtml(camera.username || '—')}</dd></div>
+                <div class="flex justify-between gap-3"><dt class="text-subtle">ID</dt><dd class="mono text-fg">${escapeHtml(camera.id)}</dd></div>`;
+        }
 
-    // Add listeners to toggles to update UI immediately
-    ['check-theft', 'check-passengers', 'check-shoplifting', 'check-eating'].forEach(id => {
-        document.getElementById(id).addEventListener('change', updateDrawingButtons);
-    });
+        async function loadBuses() {
+            const select = document.getElementById('bus-select');
+            try {
+                const buses = await api('/api/buses/');
+                select.innerHTML = (camera.bus_id ? '' : '<option value="" selected disabled>Не привязана</option>')
+                    + buses.map((b) => `<option value="${escapeHtml(b.id)}" ${b.id === camera.bus_id ? 'selected' : ''}>${escapeHtml(b.name)}${b.license_plate ? ` · ${escapeHtml(b.license_plate)}` : ''}</option>`).join('');
+                if (!buses.length) select.innerHTML = '<option value="">Автобусов нет — добавьте в разделе «Автобусы»</option>';
+            } catch (error) {
+                select.innerHTML = '<option value="">Не удалось загрузить список</option>';
+            }
+        }
 
-    loadDetails();
+        document.getElementById('bus-select').addEventListener('change', async (event) => {
+            const busId = event.target.value;
+            if (!busId) return;
+            try {
+                await api(`/api/buses/${encodeURIComponent(busId)}/link-camera/${encodeURIComponent(camId)}`, { method: 'POST' });
+                camera.bus_id = busId;
+                UI.toast(`Камера привязана к автобусу «${event.target.selectedOptions[0].textContent}»`);
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось привязать камеру' });
+                loadBuses();
+            }
+        });
+
+        /* ---------- Действия ---------- */
+        document.getElementById('btn-test-rtsp').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            UI.setBusy(button, true, 'Проверка…');
+            try {
+                const data = await api(`${camUrl}/test-rtsp`, { method: 'POST' });
+                if (data.status === 'success') {
+                    camera.status = 'online';
+                    UI.toast(`Поток отвечает, задержка ${Math.round(data.latency_ms)} мс`, { title: 'RTSP доступен' });
+                } else {
+                    camera.status = data.error === 'No stream info' ? 'offline' : 'error';
+                    UI.toast(data.error === 'Timeout' ? 'Нет ответа за 5 секунд' : (data.error || 'Поток не отвечает'), { type: 'error', title: 'RTSP недоступен' });
+                }
+                renderHeader();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error' });
+            } finally {
+                UI.setBusy(button, false);
+            }
+        });
+
+        const testSelect = document.getElementById('test-type');
+        testSelect.innerHTML = UI.detectors.map((d) => `<option value="${d.legacy_event_type}">${escapeHtml(d.title)}</option>`).join('');
+        document.getElementById('btn-test-event').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            const label = testSelect.selectedOptions[0].textContent;
+            const ok = await UI.confirm({ title: 'Создать тестовое событие?', message: `Событие «${label}» появится в ленте и будет отправлено во все активные вебхуки и Telegram.`, confirmText: 'Создать', danger: false, icon: 'send' });
+            if (!ok) return;
+            UI.setBusy(button, true);
+            try {
+                const params = new URLSearchParams({ camera_id: camId, event_type: testSelect.value });
+                await api(`/api/events/test-trigger?${params}`, { method: 'POST' });
+                UI.toast('Проверьте ленту событий и получателей вебхуков.', { title: 'Тестовое событие создано' });
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось создать событие' });
+            } finally {
+                UI.setBusy(button, false);
+            }
+        });
+
+        document.getElementById('btn-delete').addEventListener('click', async () => {
+            const ok = await UI.confirm({ title: 'Удалить камеру?', message: `Камера «${camera?.name || camId}» и все её события будут удалены. Это действие нельзя отменить.`, confirmText: 'Удалить камеру' });
+            if (!ok) return;
+            try {
+                player.stop();
+                await api(camUrl, { method: 'DELETE' });
+                saved = null;
+                window.location.href = '/cameras';
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось удалить камеру' });
+            }
+        });
+
+        /* ---------- Загрузка ---------- */
+        async function loadCamera() {
+            camera = await api(camUrl);
+            zones = Object.fromEntries(ZONE_TOOLS.map((t) => [t.field, parsePoints(camera[t.field])]));
+            doors = parsePoints(camera.counting_config).filter((d) => d && Array.isArray(d.line));
+        }
+
+        async function init() {
+            document.getElementById('contract-version').textContent = `v${(window.DETECTOR_CATALOG || {}).contract_version || '—'}`;
+            try {
+                await loadCamera();
+            } catch (error) {
+                document.getElementById('camera-layout').hidden = true;
+                document.querySelector('.page-actions').hidden = true;
+                document.getElementById('cam-title').textContent = error.status === 404 ? 'Камера не найдена' : 'Ошибка загрузки';
+                const box = document.getElementById('not-found');
+                box.hidden = false;
+                box.innerHTML = UI.emptyState({
+                    iconName: 'video-off',
+                    title: error.status === 404 ? 'Такой камеры нет' : 'Не удалось загрузить камеру',
+                    text: error.status === 404 ? 'Возможно, её удалили. Вернитесь к списку камер.' : error.message,
+                    action: '<a href="/cameras" class="btn btn-primary">К списку камер</a>',
+                });
+                return;
+            }
+            saved = Object.fromEntries(['name', 'enabled', 'ai_enabled', 'fps_limit', ...FLAGS].map((k) => [k, k === 'fps_limit' ? Number(camera[k]) : (k === 'name' ? camera[k] : Boolean(camera[k]))]));
+            renderHeader();
+            fillForm(saved);
+            renderDoors();
+            loadBuses();
+            redraw();
+            player.start();
+        }
+
+        init();
+    })();
 </script>
-<style>
-    /* Simple CSS to mimic tailwind forms plugin for toggles */
-    .toggle-checkbox:checked {
-        right: 0;
-        border-color: #3B82F6;
-    }
-
-    .toggle-checkbox {
-        position: relative;
-        border: 2px solid #6B7280;
-    }
-
-    .toggle-checkbox::after {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 2px;
-        transform: translateY(-50%);
-        width: 1.25rem;
-        height: 1.25rem;
-        background-color: white;
-        border-radius: 50%;
-        transition: left 0.2s;
-    }
-
-    .toggle-checkbox:checked::after {
-        left: calc(100% - 1.25rem - 2px);
-    }
-
-    .toggle-checkbox-sm {
-        position: relative;
-        transition: background-color 0.2s;
-    }
-    .toggle-checkbox-sm::after {
-        content: '';
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 12px;
-        height: 12px;
-        background: white;
-        border-radius: 50%;
-        transition: left 0.2s;
-    }
-    .toggle-checkbox-sm:checked::after {
-        left: 18px;
-    }
-</style>
 {% endblock %}

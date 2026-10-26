@@ -1,435 +1,251 @@
 {% extends "base.html" %}
-{% block title %}Обучение | Laptop AI Box{% endblock %}
+{% from "_ui.html" import icon, page_header %}
+{% block title %}Сбор датасета и обучение{% endblock %}
 {% block content %}
-<div class="mb-6 flex justify-between items-center">
-    <div>
-        <h1 class="text-3xl font-bold">Сбор Датасета (Обучение)</h1>
-        <p class="text-gray-400 italic mt-1">Просмотр потоков камер и сохранение кадров для дообучения моделей ИИ.</p>
+{{ page_header("AI и обучение", "Сохраняйте кадры с камер в датасет и запускайте дообучение модели действий на сервере.") }}
+
+<nav class="tabs" aria-label="Разделы AI">
+    <a href="/ai" class="tab">{{ icon("cpu", "icon-sm") }}Мониторинг</a>
+    <a href="/finetune" class="tab" aria-current="page">{{ icon("graduation", "icon-sm") }}Сбор датасета и обучение</a>
+</nav>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+    <section class="card lg:col-span-2 overflow-hidden" aria-labelledby="viewer-title">
+        <div class="card-header">
+            <h2 class="card-title" id="viewer-title">{{ icon("video", "icon-sm text-subtle") }}Просмотр камеры</h2>
+            <div class="w-full sm:w-72">
+                <label for="camera-select" class="sr-only">Камера</label>
+                <select id="camera-select" class="select input-sm"><option value="">Загрузка камер…</option></select>
+            </div>
+        </div>
+        <div class="media-frame media-grid-bg">
+            <video id="player" muted playsinline hidden></video>
+            <div class="media-overlay" data-overlay="idle">{{ icon("video", "icon-xl text-slate-500") }}<span>Выберите камеру, чтобы увидеть поток</span></div>
+            <div class="media-overlay" data-overlay="connecting" hidden><span class="spinner spinner-lg" aria-hidden="true"></span><span>Подключение к потоку…</span></div>
+            <div class="media-overlay" data-overlay="error" hidden>
+                <span class="text-red-300">{{ icon("video-off", "icon-xl") }}</span><span class="font-semibold text-slate-100">Поток недоступен</span>
+                <span class="text-xs text-slate-400" data-error-text></span>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-replay">{{ icon("refresh", "icon-sm") }}Повторить</button>
+            </div>
+            <div class="tile-badges"><span class="badge badge-overlay" id="live-badge" hidden><span class="dot dot-live text-red-500"></span>LIVE</span></div>
+        </div>
+        <div class="card-body text-sm text-muted flex items-start gap-2">
+            {{ icon("info", "icon-sm mt-0.5 text-subtle") }}
+            <span>Кадры снимаются с RTSP-потока камеры на сервере в полном качестве, а не с картинки в браузере.</span>
+        </div>
+    </section>
+
+    <div class="space-y-4">
+        <section class="card" aria-labelledby="capture-title">
+            <div class="card-header"><h2 class="card-title" id="capture-title">{{ icon("camera", "icon-sm text-subtle") }}1. Запись кадров</h2></div>
+            <div class="card-body space-y-4">
+                <div class="field">
+                    <label class="label" for="capture-interval">Интервал записи</label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="capture-interval" class="input num w-24" value="1" min="1" max="10">
+                        <span class="text-muted">сек между кадрами</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button type="button" id="btn-capture" class="btn btn-secondary" disabled>{{ icon("camera", "icon-sm") }}Один кадр</button>
+                    <button type="button" id="btn-record" class="btn btn-danger" disabled>{{ icon("record", "icon-sm") }}Начать запись</button>
+                </div>
+                <div id="capture-feedback" aria-live="polite"></div>
+            </div>
+        </section>
+
+        <section class="card" aria-labelledby="save-title" id="step-save" hidden>
+            <div class="card-header">
+                <h2 class="card-title" id="save-title">{{ icon("folder", "icon-sm text-subtle") }}2. Сохранение в датасет</h2>
+                <span class="badge badge-primary" id="frames-count">0 кадров</span>
+            </div>
+            <form class="card-body space-y-4" id="save-form" novalidate>
+                <div class="field">
+                    <label class="label" for="dataset-folder">Папка класса</label>
+                    <input list="dataset-folders" id="dataset-folder" class="input input-mono" placeholder="например, 4_shoplifting" required spellcheck="false" autocomplete="off">
+                    <datalist id="dataset-folders">
+                        {% for folder in dataset_folders %}<option value="{{ folder }}">{% endfor %}
+                    </datalist>
+                    <p class="hint">Существующие папки: {% if dataset_folders %}{{ dataset_folders | sort | join(", ") }}{% else %}пока нет{% endif %}.</p>
+                </div>
+                <div class="flex gap-2">
+                    <button type="submit" id="btn-save-session" class="btn btn-primary flex-1">{{ icon("check", "icon-sm") }}Сохранить</button>
+                    <button type="button" id="btn-discard" class="btn btn-secondary">Отменить</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card" aria-labelledby="train-title">
+            <div class="card-header"><h2 class="card-title" id="train-title">{{ icon("sparkles", "icon-sm text-subtle") }}3. Дообучение модели</h2></div>
+            <div class="card-body space-y-3">
+                <p class="text-sm text-muted">Сервер извлечёт позы из датасета и переобучит LSTM-модель действий. Процесс идёт в фоне и нагружает CPU или GPU.</p>
+                <button type="button" id="btn-train-ai" class="btn btn-primary btn-block">{{ icon("sparkles", "icon-sm") }}Запустить дообучение</button>
+                <div id="train-feedback" aria-live="polite"></div>
+            </div>
+        </section>
     </div>
 </div>
+{% endblock %}
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <!-- Player & Camera Selector -->
-    <div class="lg:col-span-2 flex flex-col gap-6">
-        <div class="bg-gray-800 rounded-lg shadow-xl overflow-hidden border border-gray-700 p-4">
-            <label class="block text-sm text-gray-400 mb-2">Выберите камеру для просмотра</label>
-            <select id="camera-select" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500 mb-4 text-white">
-                <option value="">Загрузка списка камер...</option>
-            </select>
-
-            <div class="relative w-full aspect-video bg-black flex items-center justify-center rounded overflow-hidden">
-                <video id="hls-player" controls class="w-full h-full hidden"></video>
-                
-                <div id="player-loading" class="absolute inset-0 flex flex-col items-center justify-center text-gray-500 hidden">
-                    <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
-                    <p>Инициализация HLS потока...</p>
-                </div>
-                <div id="player-error" class="absolute inset-0 flex flex-col items-center justify-center text-red-500 hidden bg-black">
-                    <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
-                    <p>Поток недоступен.</p>
-                </div>
-                <div id="player-idle" class="absolute inset-0 flex flex-col items-center justify-center text-gray-600 bg-black">
-                    <i class="fas fa-video text-4xl mb-4"></i>
-                    <p>Выберите камеру</p>
-                </div>
-            </div>
-            
-            <div class="mt-4 flex justify-between items-center">
-                <span id="cam-status" class="px-3 py-1 bg-gray-700 text-xs rounded-full uppercase tracking-wide">Не выбрано</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- Snapshot Control -->
-    <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700 h-fit">
-        <h3 class="text-lg font-bold mb-4 border-b border-gray-700 pb-2">Управление записью</h3>
-        
-        <!-- Step 1: Record -->
-        <div id="step-record" class="space-y-4">
-            <p class="text-xs text-gray-400">Сначала запишите отрезок или одиночный кадр, затем выберите куда их сохранить.</p>
-            
-            <div class="flex items-center gap-2 mt-4">
-                <label class="text-sm text-gray-400">Интервал (сек):</label>
-                <input type="number" id="capture-interval" value="1" min="1" max="10" class="w-16 bg-gray-700 border border-gray-600 rounded p-1 text-white text-center">
-            </div>
-
-            <div id="capture-feedback" class="text-sm hidden rounded p-2 mt-2"></div>
-
-            <div class="grid grid-cols-2 gap-2 mt-4">
-                <button id="btn-capture" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded shadow transition flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed text-sm">
-                    <i class="fas fa-camera mr-2"></i> 1 Кадр
-                </button>
-                <button id="btn-record" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded shadow transition flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed text-sm">
-                    <i class="fas fa-circle mr-2"></i> Начать запись
-                </button>
-            </div>
-        </div>
-
-        <!-- Step 2: Save to Folder -->
-        <div id="step-save" class="space-y-4 hidden mt-4 pt-4 border-t border-gray-700">
-            <div class="bg-yellow-900/30 border border-yellow-700 p-3 rounded mb-4">
-                <p class="text-yellow-400 text-sm"><i class="fas fa-info-circle mr-1"></i> Запись завершена. Куда сохранить кадры?</p>
-            </div>
-            
-            <div>
-                <label class="block text-sm text-gray-400 mb-1">Папка датасета</label>
-                <input list="dataset-folders" id="dataset-folder" class="w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500 text-white placeholder-gray-400" placeholder="Например: 4_shoplifting">
-                <datalist id="dataset-folders">
-                    {% for folder in dataset_folders %}
-                        <option value="{{ folder }}">
-                    {% endfor %}
-                </datalist>
-            </div>
-
-            <div class="flex gap-2">
-                <button id="btn-save-session" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-2 rounded shadow transition flex items-center justify-center text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                    <i class="fas fa-check mr-2"></i> Сохранить
-                </button>
-                <button id="btn-discard" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded shadow transition text-sm">
-                    Отмена
-                </button>
-            </div>
-            <div id="save-feedback" class="text-sm hidden rounded p-2 mt-2"></div>
-        </div>
-    </div>
-
-    <!-- Training Control -->
-    <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700 h-fit">
-        <h3 class="text-lg font-bold mb-4 border-b border-gray-700 pb-2">Запуск обучения ИИ</h3>
-        <p class="text-xs text-gray-400 mb-4">После сбора новых датасетов вы можете запустить процесс дообучения нейронной сети прямо на сервере. Это обновит LSTM-модель для распознавания драк и других инцидентов.</p>
-        
-        <button id="btn-train-ai" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded shadow transition flex items-center justify-center text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-            <i class="fas fa-brain mr-2"></i> Начать дообучение ИИ
-        </button>
-        <div id="train-feedback" class="text-sm hidden rounded p-2 mt-2"></div>
-    </div>
-</div>
-
+{% block scripts %}
+<script src="/static/vendor/hls/hls.light.min.js"></script>
 <script>
-    let currentCamId = null;
-    let hls = null;
-    let hlsKeepaliveTimer = null;
-
-    function startHlsKeepalive(cameraId) {
-        stopHlsKeepalive();
-        hlsKeepaliveTimer = setInterval(() => {
-            fetch(`/api/cameras/${cameraId}/hls-keepalive`, { method: 'POST', keepalive: true }).catch(() => {});
-        }, 30000);
-    }
-
-    function stopHlsKeepalive() {
-        if (hlsKeepaliveTimer) {
-            clearInterval(hlsKeepaliveTimer);
-            hlsKeepaliveTimer = null;
-        }
-    }
-
-    function stopHlsStream(cameraId) {
-        if (!cameraId) return;
-        stopHlsKeepalive();
-        fetch(`/api/cameras/${cameraId}/stop-hls`, { method: 'POST', keepalive: true }).catch(() => {});
-    }
-
-    async function loadCameras() {
-        const res = await fetch('/api/cameras');
-        const cams = await res.json();
-        
+    (function () {
+        const { api, escapeHtml, icon } = UI;
         const select = document.getElementById('camera-select');
-        select.innerHTML = '<option value="">-- Выберите камеру --</option>';
-        
-        cams.forEach(cam => {
-            const option = document.createElement('option');
-            option.value = cam.id;
-            option.textContent = `${cam.name} (${cam.status === 'online' ? 'Онлайн' : 'Офлайн'})`;
-            select.appendChild(option);
+        const video = document.getElementById('player');
+        const frame = video.parentElement;
+        let player = null;
+        let camId = null;
+        let sessionId = null;
+        let frames = 0;
+        let recordTimer = null;
+
+        function onState(state, detail) {
+            frame.querySelectorAll('[data-overlay]').forEach((el) => { el.hidden = el.dataset.overlay !== state; });
+            video.hidden = !(state === 'playing' || state === 'connecting');
+            document.getElementById('live-badge').hidden = state !== 'playing';
+            if (state === 'error') frame.querySelector('[data-error-text]').textContent = detail || '';
+        }
+
+        function feedback(box, type, text) {
+            const icons = { success: 'check-circle', danger: 'alert-circle', info: 'info' };
+            document.getElementById(box).innerHTML = `<div class="alert alert-${type}">${type === 'info' ? '<span class="spinner text-info-fg" aria-hidden="true"></span>' : icon(icons[type])}<div class="min-w-0 break-words">${text}</div></div>`;
+        }
+
+        async function loadCameras() {
+            try {
+                const cams = await UI.cameras();
+                select.innerHTML = '<option value="">Выберите камеру</option>' + cams.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)} · ${UI.cameraStatus(c.status).label.toLowerCase()}</option>`).join('');
+                if (!cams.length) select.innerHTML = '<option value="">Камер нет</option>';
+            } catch (error) {
+                select.innerHTML = '<option value="">Не удалось загрузить камеры</option>';
+                UI.toast(error.message, { type: 'error' });
+            }
+        }
+
+        select.addEventListener('change', () => {
+            if (recordTimer) stopRecording();
+            player?.stop();
+            camId = select.value || null;
+            document.getElementById('btn-capture').disabled = !camId;
+            document.getElementById('btn-record').disabled = !camId;
+            if (!camId) { onState('idle'); return; }
+            player = new UI.LivePlayer(video, camId, { onState });
+            player.start();
         });
-    }
+        document.getElementById('btn-replay').addEventListener('click', () => player?.start());
 
-    document.getElementById('camera-select').addEventListener('change', async (e) => {
-        const previousCamId = currentCamId;
-        currentCamId = e.target.value;
-        const video = document.getElementById('hls-player');
-        const loading = document.getElementById('player-loading');
-        const idle = document.getElementById('player-idle');
-        const error = document.getElementById('player-error');
-        const statusBadge = document.getElementById('cam-status');
+        const newSession = () => Math.random().toString(36).slice(2, 15);
 
-        // Reset UI
-        if (hls) {
-            hls.destroy();
-            hls = null;
-        }
-        if (previousCamId && previousCamId !== currentCamId) {
-            stopHlsStream(previousCamId);
-        }
-        video.classList.add('hidden');
-        error.classList.add('hidden');
-        idle.classList.add('hidden');
-        statusBadge.className = 'px-3 py-1 bg-gray-700 text-xs rounded-full uppercase tracking-wide';
-        statusBadge.textContent = 'ОЖИДАНИЕ';
-
-        if (!currentCamId) {
-            idle.classList.remove('hidden');
-            statusBadge.textContent = 'Не выбрано';
-            return;
-        }
-
-        loading.classList.remove('hidden');
-        statusBadge.textContent = 'ПОДКЛЮЧЕНИЕ...';
-
-        try {
-            const hlsRes = await fetch(`/api/cameras/${currentCamId}/trigger-hls`, { method: 'POST' });
-            const data = await hlsRes.json();
-            startHlsKeepalive(currentCamId);
-            
-            // Allow 3s for ffmpeg to start writing segments
-            setTimeout(() => {
-                if (Hls.isSupported()) {
-                    hls = new Hls({ maxBufferLength: 5, maxMaxBufferLength: 10 });
-                    hls.loadSource(data.hls_url);
-                    hls.attachMedia(video);
-                    
-                    hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                        loading.classList.add('hidden');
-                        video.classList.remove('hidden');
-                        video.play().catch(e => console.log('Autoplay prevented', e));
-                        statusBadge.textContent = 'ПОТОК АКТИВЕН';
-                        statusBadge.className = 'px-3 py-1 bg-green-600 text-white text-xs rounded-full uppercase tracking-wide';
-                    });
-                    
-                    hls.on(Hls.Events.ERROR, function (event, data) {
-                        if (data.fatal) {
-                            switch (data.type) {
-                                case Hls.ErrorTypes.NETWORK_ERROR:
-                                    hls.startLoad();
-                                    break;
-                                case Hls.ErrorTypes.MEDIA_ERROR:
-                                    hls.recoverMediaError();
-                                    break;
-                                default:
-                                    stopHlsKeepalive();
-                                    hls.destroy();
-                                    showPlayerError(statusBadge);
-                                    break;
-                            }
-                        }
-                    });
-                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                    video.src = data.hls_url;
-                    video.addEventListener('loadedmetadata', function () {
-                        loading.classList.add('hidden');
-                        video.classList.remove('hidden');
-                        video.play();
-                        statusBadge.textContent = 'ПОТОК АКТИВЕН';
-                        statusBadge.className = 'px-3 py-1 bg-green-600 text-white text-xs rounded-full uppercase tracking-wide';
-                    });
+        async function captureFrame() {
+            try {
+                const data = await api(`/api/cameras/${encodeURIComponent(camId)}/snapshot`, { method: 'POST', json: { session_id: sessionId } });
+                if (data.status === 'success') {
+                    frames += 1;
+                    feedback('capture-feedback', 'success', `Кадров в буфере: <b>${frames}</b>. Последний: <span class="mono">${escapeHtml(data.filepath.split('/').pop())}</span>`);
                 } else {
-                    showPlayerError(statusBadge);
+                    const last = data.details ? data.details.trim().split('\n').pop() : '';
+                    feedback('capture-feedback', 'danger', `${escapeHtml(data.error === 'Timeout capturing snapshot' ? 'Камера не ответила за 10 секунд' : data.error)}${last ? `<div class="mono text-xs mt-1 text-muted">${escapeHtml(last)}</div>` : ''}`);
                 }
-            }, 3000);
-        } catch (e) {
-            showPlayerError(statusBadge);
-        }
-    });
-
-    window.addEventListener('beforeunload', () => {
-        if (navigator.sendBeacon && currentCamId) {
-            stopHlsKeepalive();
-            navigator.sendBeacon(`/api/cameras/${currentCamId}/stop-hls`, new Blob([]));
-        } else {
-            stopHlsStream(currentCamId);
-        }
-    });
-
-    function showPlayerError(statusBadge) {
-        document.getElementById('player-loading').classList.add('hidden');
-        document.getElementById('hls-player').classList.add('hidden');
-        document.getElementById('player-error').classList.remove('hidden');
-        statusBadge.textContent = 'ОШИБКА ПОТОКА';
-        statusBadge.className = 'px-3 py-1 bg-red-600 text-white text-xs rounded-full uppercase tracking-wide';
-    }
-
-    let currentSessionId = null;
-
-    function generateSessionId() {
-        return Math.random().toString(36).substring(2, 15);
-    }
-
-    document.getElementById('btn-capture').addEventListener('click', async () => {
-        if (!currentCamId) {
-            alert('Пожалуйста, выберите камеру сначала.');
-            return;
-        }
-        currentSessionId = generateSessionId();
-        
-        const btn = document.getElementById('btn-capture');
-        btn.disabled = true;
-        await captureSingleFrame(currentSessionId);
-        btn.disabled = false;
-        
-        showSaveStep();
-    });
-
-    let recordIntervalId = null;
-    let isRecording = false;
-
-    document.getElementById('btn-record').addEventListener('click', () => {
-        if (!currentCamId) {
-            alert('Пожалуйста, выберите камеру сначала.');
-            return;
-        }
-
-        const btnRecord = document.getElementById('btn-record');
-        const btnCapture = document.getElementById('btn-capture');
-        const intervalSec = parseInt(document.getElementById('capture-interval').value) || 1;
-
-        if (isRecording) {
-            clearInterval(recordIntervalId);
-            isRecording = false;
-            btnRecord.classList.remove('bg-gray-600', 'hover:bg-gray-500', 'animate-pulse');
-            btnRecord.classList.add('bg-red-600', 'hover:bg-red-500');
-            btnRecord.innerHTML = '<i class="fas fa-circle mr-2"></i> Начать запись';
-            btnCapture.disabled = false;
-            
-            const feedback = document.getElementById('capture-feedback');
-            feedback.className = 'text-sm rounded p-2 mt-2 bg-gray-800 text-gray-300';
-            feedback.innerHTML = `<i class="fas fa-stop-circle mr-1"></i> Запись остановлена.`;
-            
-            showSaveStep();
-        } else {
-            currentSessionId = generateSessionId();
-            isRecording = true;
-            btnRecord.classList.remove('bg-red-600', 'hover:bg-red-500');
-            btnRecord.classList.add('bg-gray-600', 'hover:bg-gray-500', 'animate-pulse');
-            btnRecord.innerHTML = '<i class="fas fa-square mr-2"></i> Стоп запись';
-            btnCapture.disabled = true;
-            
-            document.getElementById('step-save').classList.add('hidden');
-            
-            captureSingleFrame(currentSessionId);
-            recordIntervalId = setInterval(() => {
-                captureSingleFrame(currentSessionId);
-            }, intervalSec * 1000);
-        }
-    });
-
-    async function captureSingleFrame(sessionId) {
-        const feedback = document.getElementById('capture-feedback');
-        feedback.classList.remove('hidden');
-        feedback.className = 'text-sm rounded p-2 mt-2 bg-gray-800 text-gray-400';
-        feedback.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Захват...';
-
-        try {
-            const res = await fetch(`/api/cameras/${currentCamId}/snapshot`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sessionId })
-            });
-            const data = await res.json();
-            
-            if (data.status === 'success') {
-                feedback.className = 'text-sm rounded p-2 mt-2 bg-green-900/50 text-green-400';
-                feedback.innerHTML = `<i class="fas fa-check-circle mr-1"></i> Сохранено в буфер: ${data.filepath.split('/').pop()}`;
-            } else {
-                feedback.className = 'text-sm rounded p-2 mt-2 bg-red-900/50 text-red-400';
-                let errMsg = `<i class="fas fa-exclamation-circle mr-1"></i> Ошибка: ${data.error}`;
-                if (data.details) {
-                    const lines = data.details.trim().split('\n');
-                    const lastLine = lines[lines.length - 1];
-                    errMsg += `<br><span class="text-xs text-red-300">${lastLine}</span>`;
-                }
-                feedback.innerHTML = errMsg;
+            } catch (error) {
+                feedback('capture-feedback', 'danger', escapeHtml(error.message));
             }
-        } catch (e) {
-            feedback.className = 'text-sm rounded p-2 mt-2 bg-red-900/50 text-red-400';
-            feedback.innerHTML = `<i class="fas fa-exclamation-circle mr-1"></i> Ошибка сети: ${e.message}`;
-        }
-    }
-
-    function showSaveStep() {
-        document.getElementById('step-save').classList.remove('hidden');
-        document.getElementById('save-feedback').classList.add('hidden');
-    }
-
-    document.getElementById('btn-discard').addEventListener('click', () => {
-        document.getElementById('step-save').classList.add('hidden');
-        currentSessionId = null;
-        document.getElementById('capture-feedback').classList.add('hidden');
-    });
-
-    document.getElementById('btn-save-session').addEventListener('click', async () => {
-        const folder = document.getElementById('dataset-folder').value.trim();
-        if (!folder) {
-            alert('Укажите название папки!');
-            return;
         }
 
-        const btn = document.getElementById('btn-save-session');
-        const feedback = document.getElementById('save-feedback');
-        btn.disabled = true;
-        feedback.classList.remove('hidden');
-        feedback.className = 'text-sm rounded p-2 mt-2 bg-gray-800 text-gray-400';
-        feedback.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Сохранение в ' + folder + '...';
+        function showSave() {
+            document.getElementById('frames-count').textContent = `${frames} ${UI.plural(frames, ['кадр', 'кадра', 'кадров'])}`;
+            document.getElementById('step-save').hidden = frames === 0;
+            if (frames) document.getElementById('dataset-folder').focus();
+        }
 
-        try {
-            const res = await fetch(`/api/cameras/${currentCamId}/save-session`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: currentSessionId, dataset_folder: folder })
-            });
-            const data = await res.json();
+        document.getElementById('btn-capture').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            if (!sessionId) { sessionId = newSession(); frames = 0; }
+            UI.setBusy(button, true, 'Снимаем…');
+            await captureFrame();
+            UI.setBusy(button, false);
+            showSave();
+        });
 
-            if (data.status === 'success') {
-                feedback.className = 'text-sm rounded p-2 mt-2 bg-green-900/50 text-green-400';
-                feedback.innerHTML = `<i class="fas fa-check-circle mr-1"></i> Успешно сохранено ${data.moved_files} файлов в <b>${data.final_folder}</b>`;
-                setTimeout(() => {
-                    document.getElementById('step-save').classList.add('hidden');
-                    document.getElementById('capture-feedback').classList.add('hidden');
-                }, 3000);
-            } else {
-                feedback.className = 'text-sm rounded p-2 mt-2 bg-red-900/50 text-red-400';
-                feedback.innerHTML = `<i class="fas fa-exclamation-circle mr-1"></i> Ошибка: ${data.error}`;
+        function stopRecording() {
+            clearInterval(recordTimer);
+            recordTimer = null;
+            const button = document.getElementById('btn-record');
+            button.className = 'btn btn-danger';
+            button.innerHTML = `${icon('record', 'icon-sm')}Начать запись`;
+            document.getElementById('btn-capture').disabled = !camId;
+            select.disabled = false;
+            showSave();
+        }
+
+        document.getElementById('btn-record').addEventListener('click', () => {
+            if (recordTimer) { stopRecording(); return; }
+            const seconds = Math.min(10, Math.max(1, parseInt(document.getElementById('capture-interval').value, 10) || 1));
+            if (!sessionId) { sessionId = newSession(); frames = 0; }
+            const button = document.getElementById('btn-record');
+            button.className = 'btn btn-secondary';
+            button.innerHTML = `<span class="dot dot-live text-red-500"></span>Остановить запись`;
+            document.getElementById('btn-capture').disabled = true;
+            select.disabled = true;
+            document.getElementById('step-save').hidden = true;
+            feedback('capture-feedback', 'info', `Запись: кадр каждые ${seconds} с…`);
+            captureFrame();
+            recordTimer = setInterval(captureFrame, seconds * 1000);
+        });
+
+        document.getElementById('btn-discard').addEventListener('click', () => {
+            sessionId = null;
+            frames = 0;
+            document.getElementById('step-save').hidden = true;
+            document.getElementById('capture-feedback').innerHTML = '';
+            UI.toast('Кадры из буфера не будут сохранены', { type: 'info' });
+        });
+
+        document.getElementById('save-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const input = document.getElementById('dataset-folder');
+            const folder = input.value.trim();
+            if (!folder) {
+                input.setAttribute('aria-invalid', 'true');
+                input.focus();
+                UI.toast('Укажите папку класса датасета', { type: 'error' });
+                return;
             }
-        } catch (e) {
-            feedback.className = 'text-sm rounded p-2 mt-2 bg-red-900/50 text-red-400';
-            feedback.innerHTML = `<i class="fas fa-exclamation-circle mr-1"></i> Ошибка сети: ${e.message}`;
-        } finally {
-            btn.disabled = false;
-        }
-    });
-
-    document.getElementById('btn-train-ai').addEventListener('click', async () => {
-        if (!confirm('Запустить процесс дообучения нейросети на сервере? Это может занять ресурсы процессора/GPU и некоторое время.')) return;
-        
-        const btn = document.getElementById('btn-train-ai');
-        const feedback = document.getElementById('train-feedback');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Отправка запроса...';
-        feedback.classList.add('hidden');
-
-        try {
-            const res = await fetch('/api/settings/trigger-training', { method: 'POST' });
-            const data = await res.json();
-            
-            feedback.classList.remove('hidden');
-            if (res.ok && data.status === 'success') {
-                feedback.className = 'text-sm rounded p-2 mt-2 bg-green-900/50 text-green-400';
-                feedback.innerHTML = `<i class="fas fa-check-circle mr-1"></i> ${data.message}`;
-            } else {
-                feedback.className = 'text-sm rounded p-2 mt-2 bg-red-900/50 text-red-400';
-                feedback.innerHTML = `<i class="fas fa-exclamation-circle mr-1"></i> Ошибка: ${data.detail || data.error}`;
+            input.removeAttribute('aria-invalid');
+            const button = document.getElementById('btn-save-session');
+            UI.setBusy(button, true, 'Сохранение…');
+            try {
+                const data = await api(`/api/cameras/${encodeURIComponent(camId)}/save-session`, { method: 'POST', json: { session_id: sessionId, dataset_folder: folder } });
+                if (data.status !== 'success') throw new Error(data.error);
+                UI.toast(`${data.moved_files} ${UI.plural(data.moved_files, ['файл', 'файла', 'файлов'])} → ${data.final_folder}`, { title: 'Кадры сохранены в датасет' });
+                sessionId = null;
+                frames = 0;
+                document.getElementById('step-save').hidden = true;
+                document.getElementById('capture-feedback').innerHTML = '';
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось сохранить кадры' });
+            } finally {
+                UI.setBusy(button, false);
             }
-        } catch (e) {
-            feedback.classList.remove('hidden');
-            feedback.className = 'text-sm rounded p-2 mt-2 bg-red-900/50 text-red-400';
-            feedback.innerHTML = `<i class="fas fa-exclamation-circle mr-1"></i> Ошибка сети: ${e.message}`;
-        } finally {
-            btn.innerHTML = '<i class="fas fa-brain mr-2"></i> Начать дообучение ИИ';
-            setTimeout(() => { btn.disabled = false; }, 3000);
-        }
-    });
+        });
 
-    // Initialize
-    loadCameras();
+        document.getElementById('btn-train-ai').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            const ok = await UI.confirm({ title: 'Запустить дообучение?', message: 'Сервер извлечёт позы и переобучит модель действий. Это займёт время и нагрузит процессор, детекция на камерах может замедлиться.', confirmText: 'Запустить', danger: false, icon: 'sparkles' });
+            if (!ok) return;
+            UI.setBusy(button, true, 'Отправка…');
+            try {
+                const data = await api('/api/settings/trigger-training', { method: 'POST' });
+                feedback('train-feedback', 'success', escapeHtml(data.message || 'Обучение запущено'));
+            } catch (error) {
+                feedback('train-feedback', 'danger', escapeHtml(error.message));
+            } finally {
+                setTimeout(() => UI.setBusy(button, false), 3000);
+            }
+        });
+
+        loadCameras();
+    })();
 </script>
 {% endblock %}

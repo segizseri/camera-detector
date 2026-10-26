@@ -1,169 +1,274 @@
 {% extends "base.html" %}
-{% block title %}Камеры | Laptop AI Box{% endblock %}
+{% from "_ui.html" import icon, page_header, skeleton_cards %}
+{% block title %}Камеры{% endblock %}
 {% block content %}
-<div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold">Управление камерами</h1>
-    <div class="space-x-2">
-        <button id="btn-test-all" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded shadow text-sm">
-            <i class="fas fa-stethoscope text-blue-400"></i> Проверить все RTSP
-        </button>
+{% call page_header("Камеры", "Live-просмотр, статус RTSP и включённые детекторы по каждой камере.") %}
+    <button type="button" id="btn-test-all" class="btn btn-secondary">{{ icon("activity", "icon-sm") }}Проверить все RTSP</button>
+    <a href="/nvr" class="btn btn-primary">{{ icon("plus", "icon-sm") }}Импорт из NVR</a>
+{% endcall %}
+
+<div class="card p-3 mb-4 flex flex-col lg:flex-row lg:items-center gap-3">
+    <label class="input-group lg:w-72">
+        {{ icon("search", "icon-sm") }}
+        <span class="sr-only">Поиск камеры</span>
+        <input type="search" id="filter-search" class="input input-sm" placeholder="Название или канал" autocomplete="off">
+    </label>
+    <div class="seg lg:shrink-0 lg:flex-nowrap" role="group" aria-label="Фильтр по статусу" id="status-filter">
+        <button type="button" data-status="all" aria-pressed="true">Все <span class="num text-subtle" data-count="all"></span></button>
+        <button type="button" data-status="online" aria-pressed="false">Онлайн <span class="num text-subtle" data-count="online"></span></button>
+        <button type="button" data-status="offline" aria-pressed="false">Офлайн <span class="num text-subtle" data-count="offline"></span></button>
+        <button type="button" data-status="error" aria-pressed="false">Ошибка <span class="num text-subtle" data-count="error"></span></button>
     </div>
+    <label class="flex items-center gap-3 lg:ml-auto cursor-pointer">
+        <input type="checkbox" role="switch" class="switch" id="live-mode" aria-describedby="live-hint">
+        <span>
+            <span class="block font-semibold text-fg">Живой просмотр</span>
+            <span class="block text-xs text-subtle max-w-xs" id="live-hint">Видео на всех видимых плитках. Каждый поток нагружает CPU сервера.</span>
+        </span>
+    </label>
 </div>
 
-<div id="cameras-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-    <!-- Cameras will be injected via JS -->
-    <div class="col-span-full text-center text-gray-500 py-12">
-        <i class="fas fa-spinner fa-spin text-3xl mb-4"></i>
-        <p>Загрузка камер...</p>
-    </div>
+<div id="cameras-grid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4" aria-live="polite" aria-busy="true">
+    {{ skeleton_cards(4, "aspect-video") }}
 </div>
+<div id="filter-empty" hidden class="card mt-4"></div>
+{% endblock %}
 
+{% block scripts %}
+<script src="/static/vendor/hls/hls.light.min.js"></script>
 <script>
-    async function loadCameras() {
+    (function () {
+        const { api, escapeHtml, icon, fmt, activeDetectors, cameraStatus } = UI;
         const grid = document.getElementById('cameras-grid');
-        try {
-            const res = await fetch('/api/cameras');
-            const cameras = await res.json();
+        const liveSwitch = document.getElementById('live-mode');
+        const tiles = new Map();
+        let cameras = [];
+        let statusFilter = 'all';
+        let observer = null;
 
-            if (cameras.length === 0) {
-                grid.innerHTML = `
-                    <div class="col-span-full bg-gray-800 p-8 rounded-lg text-center shadow-lg border border-gray-700">
-                        <i class="fas fa-video-slash text-4xl text-gray-500 mb-4"></i>
-                        <h3 class="text-xl font-medium mb-2">Камеры не найдены</h3>
-                        <p class="text-gray-400 mb-4">Сначала нужно импортировать камеры из NVR.</p>
-                        <a href="/nvr" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded inline-block">Перейти к настройке NVR</a>
-                    </div>
-                `;
-                return;
-            }
+        const rtspError = (text) => ({ 'Timeout': 'нет ответа за 5 секунд', 'No stream info': 'поток не отвечает' }[text] || text || 'нет ответа');
 
-            grid.innerHTML = cameras.map(cam => `
-                <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg border border-gray-700 hover:border-blue-500 transition-colors" id="cam-${cam.id}">
-                    <div class="bg-gray-900 aspect-video flex items-center justify-center relative cursor-pointer group" onclick="window.location.href='/cameras/${cam.id}'">
-                        <i class="fas fa-play-circle text-4xl text-gray-600 group-hover:text-blue-500 transition-colors"></i>
-                        <div class="absolute top-2 right-2 flex gap-2">
-                            ${cam.ai_enabled ? '<span class="bg-purple-600 text-xs px-2 py-1 rounded" title="ИИ включен"><i class="fas fa-brain"></i></span>' : ''}
-                            <span class="${cam.status === 'online' ? 'bg-green-600' : (cam.status === 'error' ? 'bg-red-600' : 'bg-gray-600')} text-xs px-2 py-1 rounded" id="status-${cam.id}">
-                                ${cam.status.toUpperCase()}
-                            </span>
-                        </div>
+        function tileHtml(cam) {
+            const dets = activeDetectors(cam);
+            const status = cameraStatus(cam.status);
+            const detectors = cam.ai_enabled
+                ? (dets.length
+                    ? dets.map((d) => `<span class="chip" title="${escapeHtml(d.title)}">${icon(d.icon, 'icon-xs')}<span class="sr-only">${escapeHtml(d.title)}</span></span>`).join('')
+                    : '<span class="text-xs text-subtle">Детекторы не выбраны</span>')
+                : '<span class="chip">' + icon('power', 'icon-xs') + 'AI выключен</span>';
+            return `
+            <article class="card tile card-interactive" data-cam="${escapeHtml(cam.id)}" aria-labelledby="cam-title-${escapeHtml(cam.id)}">
+                <div class="media-frame media-grid-bg">
+                    <video muted playsinline hidden></video>
+                    <div class="media-overlay" data-overlay="idle">
+                        <button type="button" class="tile-play" data-action="play" aria-label="Смотреть камеру ${escapeHtml(cam.name)} в реальном времени">${icon('play', 'icon-lg')}</button>
+                        <span class="text-xs text-slate-300">Канал ${escapeHtml(cam.channel ?? '—')}</span>
                     </div>
-                    <div class="p-4">
-                        <h3 class="text-lg font-bold truncate" title="${cam.name}">${cam.name}</h3>
-                        <p class="text-xs text-gray-400 mt-1 truncate font-mono">CH: ${cam.channel} | FPS: ${cam.fps_limit}</p>
-                        <div class="mt-4 flex gap-2">
-                            <button onclick="testRTSP('${cam.id}')" class="flex-1 bg-gray-700 hover:bg-gray-600 text-xs py-2 rounded transition-colors text-center" id="btn-test-${cam.id}">
-                                <i class="fas fa-vial"></i> Проверить RTSP
-                            </button>
-                            <a href="/cameras/${cam.id}" class="flex-1 bg-blue-600 hover:bg-blue-500 text-xs py-2 rounded transition-colors text-center inline-block">
-                                <i class="fas fa-cog"></i> Управление
-                            </a>
-                            <button onclick="confirmDelete('${cam.id}', '${cam.name.replace(/'/g, "\\'")}')" class="bg-red-600 hover:bg-red-500 text-xs px-3 py-2 rounded transition-colors text-center text-white" title="Удалить камеру">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                        <div id="test-res-${cam.id}" class="text-xs mt-2 text-center hidden"></div>
+                    <div class="media-overlay" data-overlay="connecting" hidden><span class="spinner spinner-lg" aria-hidden="true"></span><span>Подключение к потоку…</span></div>
+                    <div class="media-overlay bg-black/70" data-overlay="error" hidden>
+                        <span class="text-red-300">${icon('alert-triangle', 'icon-lg')}</span>
+                        <span data-error-text>Поток недоступен</span>
+                        <button type="button" class="btn btn-secondary btn-xs" data-action="play">${icon('refresh', 'icon-xs')}Повторить</button>
+                    </div>
+                    <div class="tile-badges">
+                        <span data-status-badge>${UI.cameraStatusBadge(cam.status, { overlay: true })}</span>
+                        <span class="flex gap-1.5 pointer-events-auto">
+                            <span class="badge badge-overlay" data-live-badge hidden><span class="dot dot-live text-red-500"></span>LIVE</span>
+                            <button type="button" class="btn btn-xs btn-icon badge-overlay" data-action="stop" hidden aria-label="Остановить просмотр">${icon('stop', 'icon-xs')}</button>
+                        </span>
                     </div>
                 </div>
-            `).join('');
-        } catch (e) {
-            grid.innerHTML = `<div class="col-span-full text-red-500 py-12 text-center">Не удалось загрузить камеры: ${e}</div>`;
+                <div class="p-4 flex flex-col gap-3 flex-1">
+                    <div class="min-w-0">
+                        <h2 class="font-semibold text-fg truncate" id="cam-title-${escapeHtml(cam.id)}">
+                            <a href="/cameras/${encodeURIComponent(cam.id)}" class="hover:underline underline-offset-4">${escapeHtml(cam.name)}</a>
+                        </h2>
+                        <p class="text-xs text-subtle mt-0.5 truncate">Канал ${escapeHtml(cam.channel ?? '—')} · ${escapeHtml(cam.fps_limit)} кадр/с · ${escapeHtml(cam.nvr_ip || '—')}${cam.enabled ? '' : ' · отключена'}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5" aria-label="Детекторы">${detectors}</div>
+                    <p class="text-xs min-h-4" data-test-result aria-live="polite">${cam.last_seen ? `<span class="text-subtle">На связи ${escapeHtml(fmt.relative(cam.last_seen))}</span>` : ''}</p>
+                    <div class="flex gap-2 mt-auto">
+                        <button type="button" class="btn btn-secondary btn-sm flex-1" data-action="test">${icon('activity', 'icon-sm')}RTSP</button>
+                        <a href="/cameras/${encodeURIComponent(cam.id)}" class="btn btn-primary btn-sm flex-1">${icon('sliders', 'icon-sm')}Настроить</a>
+                        <button type="button" class="btn btn-ghost btn-sm btn-icon text-critical-fg" data-action="delete" aria-label="Удалить камеру ${escapeHtml(cam.name)}">${icon('trash', 'icon-sm')}</button>
+                    </div>
+                </div>
+            </article>`;
         }
-    }
 
-    async function testRTSP(id) {
-        const btn = document.getElementById(`btn-test-${id}`);
-        const resDiv = document.getElementById(`test-res-${id}`);
-        const statusBadge = document.getElementById(`status-${id}`);
+        function setOverlay(tile, state, detail) {
+            tile.querySelectorAll('[data-overlay]').forEach((el) => { el.hidden = el.dataset.overlay !== state; });
+            const playing = state === 'playing';
+            tile.querySelector('video').hidden = !playing && state !== 'connecting';
+            tile.querySelector('[data-live-badge]').hidden = !playing;
+            tile.querySelector('[data-action="stop"]').hidden = !(playing || state === 'connecting');
+            if (state === 'error') tile.querySelector('[data-error-text]').textContent = detail || 'Поток недоступен';
+        }
 
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-        resDiv.classList.remove('hidden');
-        resDiv.innerHTML = 'Проверка...';
-
-        try {
-            const res = await fetch(`/api/cameras/${id}/test-rtsp`, { method: 'POST' });
-            const data = await res.json();
-
-            if (data.status === 'success') {
-                resDiv.innerHTML = `<span class="text-green-400">OK (${data.latency_ms.toFixed(0)} мс)</span>`;
-                statusBadge.className = "bg-green-600 text-xs px-2 py-1 rounded";
-                statusBadge.innerText = "ОНЛАЙН";
-            } else {
-                resDiv.innerHTML = `<span class="text-red-400">Ошибка: ${data.error || 'таймаут'}</span>`;
-                statusBadge.className = "bg-red-600 text-xs px-2 py-1 rounded";
-                statusBadge.innerText = "ОШИБКА";
+        function playerFor(id) {
+            const entry = tiles.get(id);
+            if (!entry.player) {
+                entry.player = new UI.LivePlayer(entry.el.querySelector('video'), id, {
+                    onState: (state, detail) => setOverlay(entry.el, state === 'idle' ? 'idle' : state, detail),
+                });
             }
-        } catch (e) {
-            resDiv.innerHTML = `<span class="text-red-400">Не удалось: ${e.message}</span>`;
-            statusBadge.className = "bg-red-600 text-xs px-2 py-1 rounded";
-            statusBadge.innerText = "ОШИБКА";
+            return entry.player;
         }
-        btn.innerHTML = '<i class="fas fa-vial"></i> Проверить RTSP';
-    }
 
-    document.getElementById('btn-test-all').addEventListener('click', async () => {
-        const reqs = await fetch('/api/cameras').then(r => r.json());
-        for (const c of reqs) {
-            testRTSP(c.id);
-            await new Promise(r => setTimeout(r, 500)); // Stagger tests
+        function applyFilter() {
+            const q = document.getElementById('filter-search').value.trim().toLowerCase();
+            let visible = 0;
+            cameras.forEach((cam) => {
+                const matchQ = !q || cam.name.toLowerCase().includes(q) || String(cam.channel).includes(q);
+                const matchS = statusFilter === 'all' || (cam.status || 'offline') === statusFilter;
+                const el = tiles.get(cam.id)?.el;
+                if (el) el.hidden = !(matchQ && matchS);
+                if (matchQ && matchS) visible += 1;
+            });
+            const empty = document.getElementById('filter-empty');
+            empty.hidden = visible > 0 || cameras.length === 0;
+            empty.innerHTML = UI.emptyState({ iconName: 'search', title: 'Нет камер под фильтр', text: 'Измените запрос или выберите другой статус.' });
         }
-    });
 
-    // Delete Modal Logic
-    let deleteTargetId = null;
+        function updateCounts() {
+            const counts = { all: cameras.length, online: 0, offline: 0, error: 0 };
+            cameras.forEach((c) => { counts[c.status in counts ? c.status : 'offline'] += 1; });
+            Object.entries(counts).forEach(([k, v]) => { document.querySelector(`[data-count="${k}"]`).textContent = v; });
+        }
 
-    function confirmDelete(id, name) {
-        deleteTargetId = id;
-        document.getElementById('delete-cam-name').innerText = name;
-        document.getElementById('delete-modal').classList.remove('hidden');
-    }
+        function setupObserver() {
+            observer?.disconnect();
+            observer = null;
+            if (!liveSwitch.checked) return;
+            observer = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    const id = entry.target.dataset.cam;
+                    const player = playerFor(id);
+                    if (entry.isIntersecting && !entry.target.hidden) {
+                        if (player.state === 'idle' || player.state === 'error') player.start();
+                    } else if (player.state !== 'idle') {
+                        player.stop();
+                    }
+                });
+            }, { threshold: 0.25 });
+            tiles.forEach(({ el }) => observer.observe(el));
+        }
 
-    function closeDeleteModal() {
-        deleteTargetId = null;
-        document.getElementById('delete-modal').classList.add('hidden');
-    }
-
-    async function performDelete() {
-        if (!deleteTargetId) return;
-        
-        const btn = document.getElementById('btn-confirm-delete');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Удаление...';
-        btn.disabled = true;
-        
-        try {
-            const res = await fetch(`/api/cameras/${deleteTargetId}`, { method: 'DELETE' });
-            if (res.ok) {
-                closeDeleteModal();
-                loadCameras();
-            } else {
-                alert('Ошибка удаления камеры');
+        async function load() {
+            try {
+                cameras = await UI.cameras({ refresh: true });
+            } catch (error) {
+                grid.setAttribute('aria-busy', 'false');
+                grid.innerHTML = `<div class="col-span-full card">${UI.errorState(error.message)}</div>`;
+                return;
             }
-        } catch (e) {
-            alert('Сетевая ошибка: ' + e);
-        } finally {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
+            tiles.forEach(({ player }) => player?.stop());
+            tiles.clear();
+            grid.setAttribute('aria-busy', 'false');
+            if (!cameras.length) {
+                grid.innerHTML = `<div class="col-span-full card">${UI.emptyState({
+                    iconName: 'video-off',
+                    title: 'Камеры ещё не добавлены',
+                    text: 'Подключитесь к видеорегистратору и выберите каналы для импорта.',
+                    action: '<a href="/nvr" class="btn btn-primary">Перейти к импорту из NVR</a>',
+                })}</div>`;
+                updateCounts();
+                return;
+            }
+            grid.innerHTML = cameras.map(tileHtml).join('');
+            grid.querySelectorAll('[data-cam]').forEach((el) => tiles.set(el.dataset.cam, { el, player: null }));
+            updateCounts();
+            applyFilter();
+            setupObserver();
         }
-    }
 
-    loadCameras();
+        async function testRtsp(id) {
+            const entry = tiles.get(id);
+            if (!entry) return;
+            const button = entry.el.querySelector('[data-action="test"]');
+            const result = entry.el.querySelector('[data-test-result]');
+            const badge = entry.el.querySelector('[data-status-badge]');
+            UI.setBusy(button, true);
+            badge.innerHTML = UI.cameraStatusBadge('checking', { overlay: true });
+            result.innerHTML = '<span class="text-subtle">Проверяем RTSP…</span>';
+            let status = 'error';
+            try {
+                const data = await api(`/api/cameras/${encodeURIComponent(id)}/test-rtsp`, { method: 'POST' });
+                if (data.status === 'success') {
+                    status = 'online';
+                    result.innerHTML = `<span class="text-success-fg">${icon('check', 'icon-xs')} RTSP доступен · ${Math.round(data.latency_ms)} мс</span>`;
+                } else {
+                    status = data.error === 'No stream info' ? 'offline' : 'error';
+                    result.innerHTML = `<span class="text-critical-fg">${icon('alert-circle', 'icon-xs')} Ошибка: ${escapeHtml(rtspError(data.error))}</span>`;
+                }
+            } catch (error) {
+                result.innerHTML = `<span class="text-critical-fg">${icon('alert-circle', 'icon-xs')} ${escapeHtml(error.message)}</span>`;
+            }
+            badge.innerHTML = UI.cameraStatusBadge(status, { overlay: true });
+            const cam = cameras.find((c) => c.id === id);
+            if (cam) cam.status = status;
+            updateCounts();
+            UI.setBusy(button, false);
+            return status;
+        }
+
+        async function deleteCamera(id) {
+            const cam = cameras.find((c) => c.id === id);
+            const ok = await UI.confirm({
+                title: 'Удалить камеру?',
+                message: `Камера «${cam?.name || id}» и все её события будут удалены. Это действие нельзя отменить.`,
+                confirmText: 'Удалить камеру',
+            });
+            if (!ok) return;
+            try {
+                tiles.get(id)?.player?.stop();
+                await api(`/api/cameras/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                UI.toast(`Камера «${cam?.name || id}» удалена`);
+                load();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось удалить камеру' });
+            }
+        }
+
+        grid.addEventListener('click', (event) => {
+            const action = event.target.closest('[data-action]');
+            if (!action) return;
+            const id = action.closest('[data-cam]').dataset.cam;
+            if (action.dataset.action === 'play') playerFor(id).start();
+            if (action.dataset.action === 'stop') playerFor(id).stop();
+            if (action.dataset.action === 'test') testRtsp(id);
+            if (action.dataset.action === 'delete') deleteCamera(id);
+        });
+
+        document.getElementById('btn-test-all').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            if (!cameras.length) return;
+            UI.setBusy(button, true, 'Проверка…');
+            const results = await Promise.all(cameras.map((cam, i) => UI.sleep(i * 400).then(() => testRtsp(cam.id))));
+            UI.setBusy(button, false);
+            const online = results.filter((s) => s === 'online').length;
+            UI.toast(`Доступно ${online} из ${cameras.length}`, { type: online === cameras.length ? 'success' : 'warning', title: 'Проверка RTSP завершена' });
+            applyFilter();
+        });
+
+        document.getElementById('status-filter').addEventListener('click', (event) => {
+            const button = event.target.closest('[data-status]');
+            if (!button) return;
+            statusFilter = button.dataset.status;
+            document.querySelectorAll('#status-filter [data-status]').forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+            applyFilter();
+            setupObserver();
+        });
+        document.getElementById('filter-search').addEventListener('input', UI.debounce(() => { applyFilter(); setupObserver(); }, 150));
+
+        liveSwitch.checked = UI.storage.get('cameras.live') === 'true';
+        liveSwitch.addEventListener('change', () => {
+            UI.storage.set('cameras.live', String(liveSwitch.checked));
+            if (!liveSwitch.checked) tiles.forEach(({ player }) => { if (player && player.state !== 'idle') player.stop(); });
+            setupObserver();
+        });
+
+        load();
+    })();
 </script>
-
-<!-- Delete Confirmation Modal -->
-<div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center backdrop-blur-sm transition-opacity">
-    <div class="bg-gray-800 rounded-xl shadow-2xl p-6 max-w-sm w-full border border-gray-700 mx-4">
-        <div class="text-center mb-6">
-            <div class="w-16 h-16 rounded-full bg-red-900/30 flex items-center justify-center mx-auto mb-4">
-                <i class="fas fa-exclamation-triangle text-3xl text-red-500"></i>
-            </div>
-            <h3 class="text-xl font-bold text-white mb-2">Удаление камеры</h3>
-            <p class="text-gray-400 text-sm">Вы уверены, что хотите удалить камеру <span id="delete-cam-name" class="font-bold text-white"></span>? Это действие нельзя будет отменить.</p>
-        </div>
-        <div class="flex gap-3">
-            <button onclick="closeDeleteModal()" class="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors text-sm font-medium">Отмена</button>
-            <button id="btn-confirm-delete" onclick="performDelete()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded transition-colors text-sm font-medium">Удалить</button>
-        </div>
-    </div>
-</div>
 {% endblock %}

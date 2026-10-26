@@ -1,173 +1,204 @@
 {% extends "base.html" %}
-{% block title %}Вебхуки | Laptop AI Box{% endblock %}
+{% from "_ui.html" import icon, page_header %}
+{% block title %}Интеграции{% endblock %}
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Интеграции вебхуков</h1>
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
-        <h2 class="text-xl font-bold mb-4">Настроенные вебхуки</h2>
-        <div id="webhooks-list" class="space-y-4"></div>
-    </div>
+{{ page_header("Интеграции", "Куда отправлять события: HTTP-вебхуки с HMAC-подписью и Telegram-бот.") }}
 
-    <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700 h-fit">
-        <h2 class="text-xl font-bold mb-4">Добавить новый вебхук</h2>
-        <form id="webhook-form" class="space-y-4">
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+    <section class="card xl:col-span-2" aria-labelledby="list-title">
+        <div class="card-header">
             <div>
-                <label class="block text-sm font-medium text-gray-400">Тип уведомления</label>
-                <select id="wh-type" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500" onchange="toggleType()">
-                    <option value="http">HTTP Webhook</option>
-                    <option value="telegram">Telegram Bot</option>
-                </select>
+                <h2 class="card-title" id="list-title">{{ icon("plug", "icon-sm text-subtle") }}Подключённые получатели</h2>
+                <p class="card-subtitle">Каждое событие детекторов уходит во все включённые интеграции</p>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-400">Название</label>
-                <input type="text" id="wh-name"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
-                    required>
+        </div>
+        <div id="webhooks-list">
+            <div class="p-5 space-y-3" aria-hidden="true"><div class="skeleton h-14"></div><div class="skeleton h-14"></div></div>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="add-title">
+        <div class="card-header"><h2 class="card-title" id="add-title">{{ icon("plus", "icon-sm text-subtle") }}Новая интеграция</h2></div>
+        <form id="webhook-form" class="card-body space-y-4" novalidate>
+            <fieldset>
+                <legend class="label mb-2">Тип</legend>
+                <div class="seg seg-block" id="type-seg">
+                    <label><input type="radio" name="hook_type" value="http" class="sr-only" checked>{{ icon("globe", "icon-sm") }}HTTP</label>
+                    <label><input type="radio" name="hook_type" value="telegram" class="sr-only">{{ icon("send", "icon-sm") }}Telegram</label>
+                </div>
+            </fieldset>
+            <div class="field">
+                <label class="label" for="wh-name">Название</label>
+                <input type="text" id="wh-name" class="input" required maxlength="80" placeholder="Например: Охрана, CRM" autocomplete="off">
             </div>
-            <div>
-                <label id="wh-url-label" class="block text-sm font-medium text-gray-400">URL-адрес</label>
-                <input type="text" id="wh-url"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
-                    placeholder="https://..." required>
+            <div class="field">
+                <label class="label" for="wh-url" id="wh-url-label">URL получателя</label>
+                <input type="text" id="wh-url" class="input input-mono" required placeholder="https://example.local/hooks/ai-box" autocomplete="off" spellcheck="false" aria-describedby="wh-url-hint">
+                <p class="hint" id="wh-url-hint">Сервер получит POST с JSON события.</p>
             </div>
-            <div>
-                <label id="wh-secret-label" class="block text-sm font-medium text-gray-400">Секрет (для HMAC подписи)</label>
-                <input type="text" id="wh-secret"
-                    class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded p-2 focus:ring-blue-500"
-                    required>
+            <div class="field">
+                <label class="label" for="wh-secret" id="wh-secret-label">Секрет для HMAC-подписи</label>
+                <input type="password" id="wh-secret" class="input input-mono" required autocomplete="new-password" spellcheck="false" aria-describedby="wh-secret-hint">
+                <p class="hint" id="wh-secret-hint">Подпись HMAC-SHA256 тела запроса придёт в заголовке X-Signature. После сохранения секрет не показывается.</p>
             </div>
-            <button type="submit"
-                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded shadow transition">Добавить
-                вебхук</button>
+            <button type="submit" class="btn btn-primary btn-block" id="btn-add">{{ icon("plus", "icon-sm") }}Добавить интеграцию</button>
         </form>
+    </section>
 </div>
+{% endblock %}
 
-<!-- Premium Delete Confirmation Modal -->
-<div id="delete-modal" class="fixed inset-0 z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
-    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeDeleteModal()"></div>
-    <div class="relative bg-gray-900 border border-gray-700 shadow-2xl rounded-2xl p-6 max-w-sm w-full mx-4 transform scale-95 transition-transform duration-300" id="delete-modal-content">
-        <div class="flex items-center justify-center w-14 h-14 rounded-full bg-red-500/10 text-red-500 mb-5 mx-auto ring-4 ring-red-500/20">
-            <i class="fas fa-trash-alt text-2xl"></i>
-        </div>
-        <h3 class="text-xl font-bold text-gray-100 text-center mb-2">Удалить интеграцию?</h3>
-        <p class="text-gray-400 text-sm text-center mb-6 leading-relaxed">Это действие нельзя будет отменить. Вы уверены, что хотите навсегда удалить этот вебхук?</p>
-        
-        <div class="flex gap-3">
-            <button type="button" onclick="closeDeleteModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-200 py-2.5 rounded-xl transition-colors font-medium border border-gray-700">Отмена</button>
-            <button type="button" onclick="executeDeleteWebhook()" class="flex-1 bg-red-600 hover:bg-red-500 text-white py-2.5 rounded-xl transition-all shadow-[0_0_15px_rgba(220,38,38,0.2)] hover:shadow-[0_0_20px_rgba(220,38,38,0.4)] font-medium">Удалить</button>
-        </div>
-    </div>
-</div>
-
+{% block scripts %}
 <script>
-    function toggleType() {
-        const type = document.getElementById('wh-type').value;
-        const urlInput = document.getElementById('wh-url');
-        
-        if (type === 'telegram') {
-            document.getElementById('wh-url-label').innerText = 'Chat ID';
-            document.getElementById('wh-secret-label').innerText = 'Bot Token';
-            urlInput.placeholder = '-100123... или @channel_name';
-        } else {
-            document.getElementById('wh-url-label').innerText = 'URL-адрес';
-            document.getElementById('wh-secret-label').innerText = 'Секрет (для HMAC подписи)';
-            urlInput.placeholder = 'https://...';
-        }
-    }
+    (function () {
+        const { api, escapeHtml, icon } = UI;
+        const listEl = document.getElementById('webhooks-list');
+        const form = document.getElementById('webhook-form');
+        let hooks = [];
 
-    async function loadWebhooks() {
-        const res = await fetch('/api/webhooks', { cache: 'no-store' });
-        const hooks = await res.json();
-
-        const list = document.getElementById('webhooks-list');
-        if (hooks.length === 0) {
-            list.innerHTML = '<p class="text-gray-500 text-center">Вебхуки не настроены.</p>';
-            return;
-        }
-
-        list.innerHTML = hooks.map(h => {
-            const icon = (h.hook_type === 'telegram') ? '<i class="fab fa-telegram text-blue-400"></i>' : '<i class="fas fa-globe text-gray-400"></i>';
-            return `
-            <div class="bg-gray-900 border border-gray-700 p-4 rounded flex justify-between items-center group">
-                <div>
-                    <h3 class="font-bold text-gray-200">${icon} ${h.name}</h3>
-                    <p class="text-xs text-gray-400 truncate w-48">${h.url}</p>
-                    <span class="${h.enabled ? 'text-green-500' : 'text-gray-500'} text-xs bg-gray-800 px-2 py-0.5 rounded mt-1 inline-block">${h.enabled ? 'АКТИВЕН' : 'ВЫКЛЮЧЕН'}</span>
-                </div>
-                <div class="flex items-center gap-3">
-                    <button type="button" onclick="testWebhook('${h.id}')" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded transition shadow" title="Тестовая отправка"><i class="fas fa-paper-plane mr-1"></i> Тест</button>
-                    <button type="button" onclick="confirmDelete('${h.id}')" class="text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition" title="Удалить"><i class="fas fa-trash"></i></button>
-                </div>
-            </div>
-            `;
-        }).join('');
-    }
-
-    async function testWebhook(id) {
-        const res = await fetch(`/api/webhooks/${id}/test`, { method: 'POST' });
-        const out = await res.json();
-        if (res.ok) {
-            alert(`Тест успешно отправлен! HTTP код: ${out.http_code}`);
-        } else {
-            alert(`Ошибка теста: ${out.detail}`);
-        }
-    }
-
-    let webhookToDelete = null;
-
-    function confirmDelete(id) {
-        webhookToDelete = id;
-        const modal = document.getElementById('delete-modal');
-        const content = document.getElementById('delete-modal-content');
-        
-        modal.classList.remove('opacity-0', 'pointer-events-none');
-        content.classList.remove('scale-95');
-        content.classList.add('scale-100');
-    }
-
-    function closeDeleteModal() {
-        const modal = document.getElementById('delete-modal');
-        const content = document.getElementById('delete-modal-content');
-        
-        modal.classList.add('opacity-0', 'pointer-events-none');
-        content.classList.remove('scale-100');
-        content.classList.add('scale-95');
-        webhookToDelete = null;
-    }
-
-    async function executeDeleteWebhook() {
-        if (!webhookToDelete) return;
-        const id = webhookToDelete;
-        closeDeleteModal();
-        
-        const res = await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
-        if (res.ok) {
-            await loadWebhooks();
-        } else {
-            const out = await res.json();
-            alert(`Ошибка при удалении: ${out.detail || 'Неизвестная ошибка'}`);
-        }
-    }
-
-    document.getElementById('webhook-form').addEventListener('submit', async e => {
-        e.preventDefault();
-        const data = {
-            name: document.getElementById('wh-name').value,
-            hook_type: document.getElementById('wh-type').value,
-            url: document.getElementById('wh-url').value,
-            secret: document.getElementById('wh-secret').value,
-            enabled: true
+        const TYPE_TEXT = {
+            http: {
+                url: 'URL получателя', urlPlaceholder: 'https://example.local/hooks/ai-box', urlHint: 'Сервер получит POST с JSON события.',
+                secret: 'Секрет для HMAC-подписи', secretHint: 'Подпись HMAC-SHA256 тела запроса придёт в заголовке X-Signature. После сохранения секрет не показывается.',
+            },
+            telegram: {
+                url: 'Chat ID', urlPlaceholder: '-1001234567890 или @channel_name', urlHint: 'ID чата, группы или канала, куда бот будет писать.',
+                secret: 'Токен бота', secretHint: 'Выдаёт @BotFather. Бот должен состоять в чате, а сервер должен иметь доступ к api.telegram.org.',
+            },
         };
-        await fetch('/api/webhooks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        e.target.reset();
-        toggleType(); // reset placeholders
-        loadWebhooks();
-    });
 
-    loadWebhooks();
+        function currentType() {
+            return form.querySelector('input[name="hook_type"]:checked').value;
+        }
+
+        function syncType() {
+            const t = TYPE_TEXT[currentType()];
+            document.getElementById('wh-url-label').textContent = t.url;
+            document.getElementById('wh-url').placeholder = t.urlPlaceholder;
+            document.getElementById('wh-url-hint').textContent = t.urlHint;
+            document.getElementById('wh-secret-label').textContent = t.secret;
+            document.getElementById('wh-secret-hint').textContent = t.secretHint;
+        }
+
+        function render() {
+            if (!hooks.length) {
+                listEl.innerHTML = UI.emptyState({ iconName: 'plug', title: 'Интеграций пока нет', text: 'Добавьте HTTP-вебхук или Telegram-бота, чтобы получать уведомления о событиях.' });
+                return;
+            }
+            listEl.innerHTML = `<ul class="divide-y divide-line">${hooks.map((h) => {
+                const tg = h.hook_type === 'telegram';
+                return `<li class="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4" data-id="${escapeHtml(h.id)}">
+                    <div class="flex items-center gap-3 min-w-0 flex-1">
+                        <span class="detector-icon ${tg ? 'text-info-fg' : 'text-subtle'}">${icon(tg ? 'send' : 'globe')}</span>
+                        <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="font-semibold text-fg truncate">${escapeHtml(h.name)}</span>
+                                <span class="badge badge-sm badge-outline">${tg ? 'Telegram' : 'HTTP'}</span>
+                                ${h.secret_configured ? '' : '<span class="badge badge-sm badge-medium">Нет секрета</span>'}
+                            </div>
+                            <div class="mono text-subtle truncate" title="${escapeHtml(h.url)}">${tg ? 'Chat ID ' : ''}${escapeHtml(h.url)}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 sm:ml-auto">
+                        <label class="flex items-center gap-2 text-sm mr-1 cursor-pointer">
+                            <input type="checkbox" role="switch" class="switch switch-sm" data-toggle ${h.enabled ? 'checked' : ''} aria-label="Интеграция «${escapeHtml(h.name)}» включена">
+                            <span class="text-muted w-16">${h.enabled ? 'Активна' : 'Выключена'}</span>
+                        </label>
+                        <button type="button" class="btn btn-secondary btn-sm" data-test>${icon('send', 'icon-sm')}Тест</button>
+                        <button type="button" class="btn btn-ghost btn-sm btn-icon text-critical-fg" data-delete aria-label="Удалить «${escapeHtml(h.name)}»">${icon('trash', 'icon-sm')}</button>
+                    </div>
+                </li>`;
+            }).join('')}</ul>`;
+        }
+
+        async function load() {
+            try {
+                hooks = await api('/api/webhooks/', { cache: 'no-store' });
+                render();
+            } catch (error) {
+                listEl.innerHTML = UI.errorState(error.message);
+            }
+        }
+
+        listEl.addEventListener('change', async (event) => {
+            const toggle = event.target.closest('[data-toggle]');
+            if (!toggle) return;
+            const id = toggle.closest('[data-id]').dataset.id;
+            toggle.disabled = true;
+            try {
+                await api(`/api/webhooks/${encodeURIComponent(id)}`, { method: 'PATCH', json: { enabled: toggle.checked } });
+                hooks.find((h) => h.id === id).enabled = toggle.checked;
+                UI.toast(toggle.checked ? 'Интеграция включена' : 'Интеграция выключена');
+                render();
+            } catch (error) {
+                toggle.checked = !toggle.checked;
+                toggle.disabled = false;
+                UI.toast(error.message, { type: 'error', title: 'Не удалось изменить интеграцию' });
+            }
+        });
+
+        listEl.addEventListener('click', async (event) => {
+            if (event.target.closest('[data-retry]')) { load(); return; }
+            const row = event.target.closest('[data-id]');
+            if (!row) return;
+            const hook = hooks.find((h) => h.id === row.dataset.id);
+            const test = event.target.closest('[data-test]');
+            if (test) {
+                UI.setBusy(test, true, 'Отправка…');
+                try {
+                    const out = await api(`/api/webhooks/${encodeURIComponent(hook.id)}/test`, { method: 'POST' });
+                    UI.toast(`Получатель ответил кодом ${out.http_code}`, { title: 'Тестовое сообщение отправлено' });
+                } catch (error) {
+                    UI.toast(error.message, { type: 'error', title: 'Тест не прошёл' });
+                } finally {
+                    UI.setBusy(test, false);
+                }
+                return;
+            }
+            if (event.target.closest('[data-delete]')) {
+                const ok = await UI.confirm({ title: 'Удалить интеграцию?', message: `«${hook.name}» перестанет получать события. История доставок тоже будет удалена.`, confirmText: 'Удалить' });
+                if (!ok) return;
+                try {
+                    await api(`/api/webhooks/${encodeURIComponent(hook.id)}`, { method: 'DELETE' });
+                    UI.toast('Интеграция удалена');
+                    load();
+                } catch (error) {
+                    UI.toast(error.message, { type: 'error', title: 'Не удалось удалить интеграцию' });
+                }
+            }
+        });
+
+        form.addEventListener('change', (event) => { if (event.target.name === 'hook_type') syncType(); });
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const fields = ['wh-name', 'wh-url', 'wh-secret'].map((id) => document.getElementById(id));
+            const empty = fields.filter((el) => !el.value.trim());
+            fields.forEach((el) => el.setAttribute('aria-invalid', String(empty.includes(el))));
+            if (empty.length) {
+                empty[0].focus();
+                UI.toast('Заполните все поля формы', { type: 'error' });
+                return;
+            }
+            const button = document.getElementById('btn-add');
+            UI.setBusy(button, true, 'Добавление…');
+            try {
+                await api('/api/webhooks/', {
+                    method: 'POST',
+                    json: { name: fields[0].value.trim(), hook_type: currentType(), url: fields[1].value.trim(), secret: fields[2].value.trim(), enabled: true },
+                });
+                UI.toast('Нажмите «Тест», чтобы проверить доставку.', { title: 'Интеграция добавлена' });
+                form.reset();
+                fields.forEach((el) => el.removeAttribute('aria-invalid'));
+                syncType();
+                load();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось добавить интеграцию' });
+            } finally {
+                UI.setBusy(button, false);
+            }
+        });
+
+        syncType();
+        load();
+    })();
 </script>
 {% endblock %}

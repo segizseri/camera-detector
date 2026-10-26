@@ -1,340 +1,190 @@
 {% extends "base.html" %}
-
-{% block title %}База Посетителей{% endblock %}
-
+{% from "_ui.html" import icon, page_header, skeleton_cards %}
+{% block title %}Посетители{% endblock %}
 {% block content %}
-<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
-    <div>
-        <h1 class="text-3xl font-bold">База Посетителей (Re-ID)</h1>
-        <p class="text-gray-400 text-sm mt-1">Система автоматически распознает лица и ведет историю визитов.</p>
+{% call page_header("Посетители", "Распознавание лиц (Re-ID) ведёт историю визитов. Отмечайте нарушителей и сотрудников.") %}
+    <label class="card flex items-center gap-3 px-3.5 py-2 cursor-pointer">
+        {{ icon("scan-face", "text-subtle") }}
+        <span class="text-sm font-semibold text-fg">Распознавание лиц</span>
+        <input type="checkbox" role="switch" class="switch" id="scanning-toggle" disabled>
+    </label>
+{% endcall %}
+
+<div class="card p-3 mb-4 flex flex-col md:flex-row md:items-center gap-3">
+    <div class="seg" role="group" aria-label="Категория посетителей" id="status-filter">
+        <button type="button" data-filter="all" aria-pressed="true">Все</button>
+        <button type="button" data-filter="normal" aria-pressed="false">Обычные</button>
+        <button type="button" data-filter="flagged" aria-pressed="false"><span class="dot sev-critical"></span>Нарушители</button>
+        <button type="button" data-filter="employee" aria-pressed="false"><span class="dot sev-info"></span>Сотрудники</button>
     </div>
-    
-    <!-- Global Face Scanning Toggle -->
-    <div class="flex items-center bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg shadow-md gap-3">
-        <span class="text-sm font-medium text-gray-300 select-none">Распознавание лиц:</span>
-        <button id="scanning-toggle-btn" onclick="toggleScanning()" 
-                style="width: 2.75rem; height: 1.5rem; display: inline-flex; align-items: center; border-radius: 9999px; cursor: pointer; transition: background-color 0.2s; position: relative; border: none; outline: none; background-color: rgb(75, 85, 99);">
-            <span id="scanning-toggle-dot" 
-                  style="width: 1.25rem; height: 1.25rem; border-radius: 9999px; background-color: white; position: absolute; left: 0.125rem; transition: transform 0.2s; transform: translateX(0);"></span>
-        </button>
-    </div>
-</div>
-
-<div class="bg-gray-800 rounded-lg p-4 mb-6 shadow-md flex flex-wrap items-center justify-between gap-4">
-    <div class="flex items-center flex-wrap gap-4">
-        <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow transition flex items-center gap-2" onclick="loadVisitors()">
-            <i class="fas fa-sync"></i> Обновить список
-        </button>
-        <button class="bg-red-600/90 hover:bg-red-700 text-white px-4 py-2 rounded shadow transition flex items-center gap-2" onclick="confirmClearAll()">
-            <i class="fas fa-eraser"></i> Очистить список
-        </button>
-        
-        <div class="flex bg-gray-900 rounded shadow-inner p-1">
-            <button onclick="setFilter('all')" id="filter-btn-all" class="px-3 py-1.5 text-sm rounded bg-gray-700 text-white transition-colors">Все</button>
-            <button onclick="setFilter('normal')" id="filter-btn-normal" class="px-3 py-1.5 text-sm rounded text-gray-400 hover:text-white transition-colors">Обычные</button>
-            <button onclick="setFilter('flagged')" id="filter-btn-flagged" class="px-3 py-1.5 text-sm rounded text-gray-400 hover:text-white transition-colors">Нарушители</button>
-            <button onclick="setFilter('employee')" id="filter-btn-employee" class="px-3 py-1.5 text-sm rounded text-gray-400 hover:text-white transition-colors">Сотрудники</button>
-        </div>
-    </div>
-    <span id="visitors-count" class="text-gray-400 text-sm font-medium"></span>
-</div>
-
-<div id="visitors-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-    <div class="col-span-full text-center text-gray-500 py-10">Загрузка данных посетителей...</div>
-</div>
-
-<!-- Pagination Controls -->
-<div id="pagination" class="mt-8 flex justify-center items-center gap-2 hidden">
-    <!-- Will be filled dynamically -->
-</div>
-
-<!-- Premium Confirmation Modal -->
-<div id="confirm-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center z-50">
-    <div class="bg-gray-800 rounded-xl shadow-2xl border border-gray-700 w-full max-w-md overflow-hidden transform scale-95 transition-transform duration-200" id="confirm-modal-box">
-        <div class="p-6 flex items-start gap-4">
-            <div class="bg-red-900/50 border border-red-500 text-red-500 rounded-full p-3 flex-shrink-0">
-                <i class="fas fa-exclamation-triangle text-xl"></i>
-            </div>
-            <div>
-                <h3 class="text-lg font-bold text-white mb-2" id="confirm-title">Подтверждение удаления</h3>
-                <p class="text-sm text-gray-400" id="confirm-message">Вы уверены, что хотите безвозвратно удалить профиль этого посетителя и все связанные события?</p>
-            </div>
-        </div>
-        <div class="bg-gray-850 px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
-            <button onclick="closeConfirmModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition">Отмена</button>
-            <button id="confirm-yes-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium shadow transition">Удалить</button>
-        </div>
+    <span id="visitors-count" class="text-sm text-muted md:ml-2" aria-live="polite"></span>
+    <div class="flex gap-2 md:ml-auto">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh">{{ icon("refresh", "icon-sm") }}Обновить</button>
+        <button type="button" class="btn btn-danger-soft btn-sm" id="btn-clear">{{ icon("trash", "icon-sm") }}Очистить список</button>
     </div>
 </div>
 
+<div id="visitors-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4" aria-busy="true">
+    {{ skeleton_cards(8, "aspect-[4/3]") }}
+</div>
+<nav id="pagination" class="mt-6 flex flex-wrap justify-center items-center gap-1.5" aria-label="Страницы" hidden></nav>
+{% endblock %}
+
+{% block scripts %}
 <script>
-    let currentFilter = 'all';
-    let currentPage = 1;
-    const limit = 24;
-    let isScanningEnabled = true;
-
-    // Load scanning settings on startup
-    function fetchScanningSetting() {
-        fetch('/api/settings/')
-            .then(res => res.json())
-            .then(data => {
-                isScanningEnabled = data.visitor_scanning_enabled !== 'false';
-                updateScanningToggleUI();
-            });
-    }
-
-    function updateScanningToggleUI() {
-        const btn = document.getElementById('scanning-toggle-btn');
-        const dot = document.getElementById('scanning-toggle-dot');
-        if (isScanningEnabled) {
-            btn.style.backgroundColor = 'rgb(22, 163, 74)'; // green-600
-            dot.style.transform = 'translateX(1.25rem)';
-        } else {
-            btn.style.backgroundColor = 'rgb(75, 85, 99)'; // gray-600
-            dot.style.transform = 'translateX(0)';
-        }
-    }
-
-    function toggleScanning() {
-        isScanningEnabled = !isScanningEnabled;
-        updateScanningToggleUI();
-        
-        fetch('/api/settings/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                settings: { visitor_scanning_enabled: isScanningEnabled ? 'true' : 'false' }
-            })
-        });
-    }
-    
-    function setFilter(filter) {
-        currentFilter = filter;
-        currentPage = 1;
-        
-        // Update button styles
-        ['all', 'normal', 'flagged', 'employee'].forEach(f => {
-            const btn = document.getElementById(`filter-btn-${f}`);
-            if(f === filter) {
-                btn.classList.add('bg-gray-700', 'text-white');
-                btn.classList.remove('text-gray-400');
-            } else {
-                btn.classList.remove('bg-gray-700', 'text-white');
-                btn.classList.add('text-gray-400');
-            }
-        });
-        
-        loadVisitors();
-    }
-
-    function loadVisitors(page = 1) {
-        currentPage = page;
+    (function () {
+        const { api, escapeHtml, icon, fmt } = UI;
         const grid = document.getElementById('visitors-grid');
-        grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10"><i class="fas fa-spinner fa-spin mr-2"></i> Загрузка...</div>';
-        
-        fetch(`/api/visitors/?status_filter=${currentFilter}&page=${currentPage}&limit=${limit}`)
-            .then(res => res.json())
-            .then(data => {
-                renderVisitors(data.items);
-                renderPagination(data.page, data.pages);
-                
-                const countEl = document.getElementById('visitors-count');
-                const filterNames = {
-                    'all': 'Всего',
-                    'normal': 'Обычных',
-                    'flagged': 'Нарушителей',
-                    'employee': 'Сотрудников'
-                };
-                countEl.textContent = `${filterNames[currentFilter] || 'Всего'}: ${data.total}`;
-            })
-            .catch(err => {
-                grid.innerHTML = '<div class="col-span-full text-center text-red-400 py-10">Ошибка загрузки: ' + err.message + '</div>';
-            });
-    }
+        const limit = 24;
+        let filter = 'all';
+        let page = 1;
 
-    function renderVisitors(visitors) {
-        const grid = document.getElementById('visitors-grid');
-        grid.innerHTML = '';
-        
-        if (!visitors || visitors.length === 0) {
-            grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">Посетителей не найдено.</div>';
-            return;
+        const FILTER_NAMES = { all: 'Всего', normal: 'Обычных', flagged: 'Нарушителей', employee: 'Сотрудников' };
+
+        function statusBadge(v) {
+            if (v.is_employee) return `<span class="badge badge-info">${icon('user-check', 'icon-xs')}Сотрудник</span>`;
+            if (v.is_flagged) return `<span class="badge badge-critical">${icon('alert-triangle', 'icon-xs')}Нарушитель</span>`;
+            return `<span class="badge badge-overlay">Посетитель</span>`;
         }
 
-        visitors.forEach(v => {
-            const card = document.createElement('div');
-            
-            let borderClass = 'border-gray-700';
-            let statusHtml = '';
-            
-            if (v.is_employee) {
-                borderClass = 'border-blue-500 border-2';
-                statusHtml = '<span class="text-xs bg-blue-900 text-blue-200 px-2.5 py-1 rounded-full shadow-md"><i class="fas fa-user-tie"></i> Сотрудник</span>';
-            } else if (v.is_flagged) {
-                borderClass = 'border-red-500 border-2';
-                statusHtml = '<span class="text-xs bg-red-900 text-red-200 px-2.5 py-1 rounded-full shadow-md"><i class="fas fa-exclamation-triangle"></i> Нарушитель</span>';
-            } else {
-                statusHtml = '<span class="text-xs bg-green-900 text-green-200 px-2.5 py-1 rounded-full shadow-md">Обычный клиент</span>';
-            }
-            
-            card.className = `bg-gray-800 rounded-lg border ${borderClass} overflow-hidden shadow-lg flex flex-col h-[405px]`;
-            
-            // Format dates
-            const lastSeen = new Date(v.last_seen).toLocaleString('ru-RU');
-            const firstSeen = new Date(v.first_seen).toLocaleDateString('ru-RU');
-            
-            const imgPath = v.face_snapshot ? `/media/snapshots/${v.face_snapshot}` : '/static/favicon.png';
-            
-            // Use name or default ID string
-            const displayName = v.name ? v.name : `Посетитель #${v.id.substring(0, 6)}`;
-            
-            card.innerHTML = `
-                <div class="h-48 bg-gray-900 overflow-hidden relative group w-full">
-                    <img src="${imgPath}" class="w-full h-full object-cover" alt="Face" onerror="this.src='/static/favicon.png'">
-                    <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-90"></div>
-                    <div class="absolute bottom-2.5 left-2.5">
-                        ${statusHtml}
+        function card(v) {
+            const name = v.name || `Посетитель #${v.id.slice(0, 6)}`;
+            const img = v.face_snapshot ? UI.snapshotUrl(v.face_snapshot) : null;
+            const ring = v.is_flagged ? 'border-critical/50' : v.is_employee ? 'border-info/50' : '';
+            return `<article class="card card-interactive overflow-hidden flex flex-col ${ring}">
+                <a href="/visitors/${encodeURIComponent(v.id)}" class="block relative aspect-[4/3] bg-surface-2 overflow-hidden" tabindex="-1" aria-hidden="true">
+                    <span class="absolute inset-0 grid place-items-center text-subtle">${icon('user', 'icon-xl')}</span>
+                    ${img ? `<img src="${img}" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()">` : ''}
+                    <span class="absolute left-2.5 bottom-2.5">${statusBadge(v)}</span>
+                </a>
+                <div class="p-4 flex-1 flex flex-col gap-2">
+                    <h2 class="font-semibold text-fg truncate"><a href="/visitors/${encodeURIComponent(v.id)}" class="hover:underline underline-offset-4">${escapeHtml(name)}</a></h2>
+                    <dl class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                        <dt class="text-subtle">Визитов</dt><dd class="text-fg font-semibold num text-right">${fmt.number(v.visit_count)}</dd>
+                        <dt class="text-subtle">Последний</dt><dd class="text-fg text-right" title="${escapeHtml(fmt.full(v.last_seen))}">${escapeHtml(fmt.relative(v.last_seen))}</dd>
+                        <dt class="text-subtle">Впервые</dt><dd class="text-fg text-right">${escapeHtml(fmt.date(v.first_seen))}</dd>
+                    </dl>
+                    ${v.notes ? `<p class="text-xs text-muted truncate-2 rounded-md bg-surface-2 border border-line px-2.5 py-1.5" title="${escapeHtml(v.notes)}">${escapeHtml(v.notes)}</p>` : ''}
+                    <div class="flex gap-2 mt-auto pt-1">
+                        <a href="/visitors/${encodeURIComponent(v.id)}" class="btn btn-secondary btn-sm flex-1">${icon('pencil', 'icon-sm')}Профиль</a>
+                        <button type="button" class="btn btn-ghost btn-sm btn-icon text-critical-fg" data-delete="${escapeHtml(v.id)}" data-name="${escapeHtml(name)}" aria-label="Удалить ${escapeHtml(name)}">${icon('trash', 'icon-sm')}</button>
                     </div>
                 </div>
-                <div class="p-4 flex-grow flex flex-col justify-between">
-                    <div>
-                        <h3 class="font-bold text-lg text-white mb-1.5 truncate" title="${displayName}">${displayName}</h3>
-                        <div class="text-sm text-gray-400 space-y-1">
-                            <p><i class="fas fa-walking w-4 text-center"></i> Визитов: <span class="text-white font-semibold">${v.visit_count}</span></p>
-                            <p><i class="fas fa-clock w-4 text-center"></i> Был: <span class="text-white">${lastSeen}</span></p>
-                            <p><i class="fas fa-calendar-alt w-4 text-center"></i> Впервые: <span class="text-white">${firstSeen}</span></p>
-                        </div>
-                    </div>
-                    ${v.notes ? `<div class="mt-2.5 p-2 bg-gray-700/50 border border-gray-700/30 rounded text-xs text-gray-300 italic line-clamp-2 h-10 flex items-center" title="${v.notes}">${v.notes}</div>` : '<div class="mt-2.5 h-10 bg-transparent"></div>'}
-                </div>
-                <div class="p-3 bg-gray-850 border-t border-gray-700 flex justify-between items-center gap-3">
-                    <a class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition cursor-pointer shadow-sm" href="/visitors/${v.id}">
-                        <i class="fas fa-user-edit"></i> Профиль
-                    </a>
-                    <button class="text-sm bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition cursor-pointer shadow-sm ml-auto" onclick="confirmDelete('${v.id}')">
-                        <i class="fas fa-trash"></i> Удалить
-                    </button>
-                </div>
-            `;
-            grid.appendChild(card);
-        });
-    }
+            </article>`;
+        }
 
-    function renderPagination(page, pages) {
-        const wrapper = document.getElementById('pagination');
-        if (pages <= 1) {
-            wrapper.innerHTML = '';
-            wrapper.classList.add('hidden');
-            return;
-        }
-        
-        wrapper.classList.remove('hidden');
-        let html = '';
-        
-        // Prev button
-        if (page > 1) {
-            html += `<button onclick="loadVisitors(${page - 1})" class="px-3.5 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition"><i class="fas fa-chevron-left"></i></button>`;
-        } else {
-            html += `<button disabled class="px-3.5 py-2 rounded-lg bg-gray-800 text-gray-600 text-sm font-medium cursor-not-allowed"><i class="fas fa-chevron-left"></i></button>`;
-        }
-        
-        // Page numbers
-        for (let i = 1; i <= pages; i++) {
-            if (i === page) {
-                html += `<button class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold shadow-md">${i}</button>`;
-            } else {
-                html += `<button onclick="loadVisitors(${i})" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition">${i}</button>`;
+        function renderPagination(current, pages) {
+            const nav = document.getElementById('pagination');
+            nav.hidden = pages <= 1;
+            if (pages <= 1) { nav.innerHTML = ''; return; }
+            const items = [];
+            const add = (p) => items.push(p);
+            for (let p = 1; p <= pages; p += 1) {
+                if (p === 1 || p === pages || Math.abs(p - current) <= 1) add(p);
+                else if (items[items.length - 1] !== '…') add('…');
             }
+            nav.innerHTML = `
+                <button type="button" class="btn btn-secondary btn-sm btn-icon" data-page="${current - 1}" ${current === 1 ? 'disabled' : ''} aria-label="Предыдущая страница">${icon('chevron-left', 'icon-sm')}</button>
+                ${items.map((p) => p === '…' ? '<span class="px-1.5 text-subtle">…</span>'
+                    : `<button type="button" class="btn btn-sm ${p === current ? 'btn-primary' : 'btn-ghost'} min-w-9" data-page="${p}" ${p === current ? 'aria-current="page"' : ''}>${p}</button>`).join('')}
+                <button type="button" class="btn btn-secondary btn-sm btn-icon" data-page="${current + 1}" ${current === pages ? 'disabled' : ''} aria-label="Следующая страница">${icon('chevron-right', 'icon-sm')}</button>`;
         }
-        
-        // Next button
-        if (page < pages) {
-            html += `<button onclick="loadVisitors(${page + 1})" class="px-3.5 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition"><i class="fas fa-chevron-right"></i></button>`;
-        } else {
-            html += `<button disabled class="px-3.5 py-2 rounded-lg bg-gray-800 text-gray-600 text-sm font-medium cursor-not-allowed"><i class="fas fa-chevron-right"></i></button>`;
-        }
-        
-        wrapper.innerHTML = html;
-    }
 
-    // Modal Confirmation Logic
-    let visitorIdToDelete = null;
-
-    function confirmDelete(id) {
-        visitorIdToDelete = id;
-        
-        document.getElementById('confirm-title').textContent = "Подтверждение удаления";
-        document.getElementById('confirm-message').textContent = "Вы уверены, что хотите безвозвратно удалить профиль этого посетителя и все связанные события?";
-        document.getElementById('confirm-yes-btn').textContent = "Удалить";
-        
-        const modal = document.getElementById('confirm-modal');
-        const box = document.getElementById('confirm-modal-box');
-        
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        setTimeout(() => {
-            box.classList.remove('scale-95');
-            box.classList.add('scale-100');
-        }, 50);
-
-        document.getElementById('confirm-yes-btn').onclick = function() {
-            if (visitorIdToDelete) {
-                fetch(`/api/visitors/${visitorIdToDelete}`, { method: 'DELETE' })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'ok') {
-                        closeConfirmModal();
-                        loadVisitors(currentPage);
-                    }
-                });
-            }
-        };
-    }
-
-    function confirmClearAll() {
-        visitorIdToDelete = null;
-        
-        document.getElementById('confirm-title').textContent = "Очистить список посетителей";
-        document.getElementById('confirm-message').textContent = "Вы уверены, что хотите безвозвратно удалить ВСЕХ распознанных посетителей? Список сотрудников останется нетронутым.";
-        document.getElementById('confirm-yes-btn').textContent = "Очистить";
-        
-        const modal = document.getElementById('confirm-modal');
-        const box = document.getElementById('confirm-modal-box');
-        
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        setTimeout(() => {
-            box.classList.remove('scale-95');
-            box.classList.add('scale-100');
-        }, 50);
-
-        document.getElementById('confirm-yes-btn').onclick = function() {
-            fetch('/api/visitors/clear', { method: 'POST' })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'ok') {
-                    closeConfirmModal();
-                    loadVisitors(1);
+        async function load(nextPage = page) {
+            page = nextPage;
+            grid.setAttribute('aria-busy', 'true');
+            try {
+                const params = new URLSearchParams({ status_filter: filter, page, limit });
+                const data = await api(`/api/visitors/?${params}`);
+                grid.setAttribute('aria-busy', 'false');
+                document.getElementById('visitors-count').textContent = `${FILTER_NAMES[filter]}: ${data.total}`;
+                if (!data.items.length) {
+                    const texts = {
+                        all: ['Посетителей пока нет', 'Когда распознавание лиц увидит человека, его профиль появится здесь.'],
+                        normal: ['Обычных посетителей нет', 'Все распознанные люди отмечены как нарушители или сотрудники.'],
+                        flagged: ['Нарушителей нет', 'Посетитель становится нарушителем после инцидента или по отметке в профиле.'],
+                        employee: ['Сотрудники не отмечены', 'Отметьте сотрудника в профиле посетителя, чтобы не путать его с клиентами.'],
+                    }[filter];
+                    grid.innerHTML = `<div class="col-span-full card">${UI.emptyState({ iconName: 'scan-face', title: texts[0], text: texts[1] })}</div>`;
+                } else {
+                    grid.innerHTML = data.items.map(card).join('');
                 }
-            });
-        };
-    }
+                renderPagination(data.page, data.pages);
+            } catch (error) {
+                grid.setAttribute('aria-busy', 'false');
+                grid.innerHTML = `<div class="col-span-full card">${UI.errorState(error.message)}</div>`;
+            }
+        }
 
-    function closeConfirmModal() {
-        const modal = document.getElementById('confirm-modal');
-        const box = document.getElementById('confirm-modal-box');
-        
-        box.classList.remove('scale-100');
-        box.classList.add('scale-95');
-        setTimeout(() => {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-            visitorIdToDelete = null;
-        }, 150);
-    }
+        async function loadScanning() {
+            const toggle = document.getElementById('scanning-toggle');
+            try {
+                const settings = await api('/api/settings/');
+                toggle.checked = settings.visitor_scanning_enabled !== 'false';
+                toggle.disabled = false;
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось загрузить настройки' });
+            }
+        }
 
-    // Initialize
-    fetchScanningSetting();
-    loadVisitors();
+        document.getElementById('scanning-toggle').addEventListener('change', async (event) => {
+            const toggle = event.currentTarget;
+            const enabled = toggle.checked;
+            toggle.disabled = true;
+            try {
+                await api('/api/settings/update', { method: 'POST', json: { settings: { visitor_scanning_enabled: enabled ? 'true' : 'false' } } });
+                UI.toast(enabled ? 'Распознавание лиц включено' : 'Распознавание лиц выключено');
+            } catch (error) {
+                toggle.checked = !enabled;
+                UI.toast(error.message, { type: 'error', title: 'Не удалось сохранить' });
+            } finally {
+                toggle.disabled = false;
+            }
+        });
+
+        document.getElementById('status-filter').addEventListener('click', (event) => {
+            const button = event.target.closest('[data-filter]');
+            if (!button) return;
+            filter = button.dataset.filter;
+            document.querySelectorAll('#status-filter [data-filter]').forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+            load(1);
+        });
+        document.getElementById('pagination').addEventListener('click', (event) => {
+            const button = event.target.closest('[data-page]');
+            if (button && !button.disabled) {
+                load(Number(button.dataset.page));
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
+        grid.addEventListener('click', async (event) => {
+            if (event.target.closest('[data-retry]')) { load(); return; }
+            const button = event.target.closest('[data-delete]');
+            if (!button) return;
+            const ok = await UI.confirm({ title: 'Удалить профиль?', message: `Профиль «${button.dataset.name}» будет удалён без возможности восстановления.`, confirmText: 'Удалить профиль' });
+            if (!ok) return;
+            try {
+                await api(`/api/visitors/${encodeURIComponent(button.dataset.delete)}`, { method: 'DELETE' });
+                UI.toast('Профиль удалён');
+                load();
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось удалить профиль' });
+            }
+        });
+        document.getElementById('btn-refresh').addEventListener('click', () => load());
+        document.getElementById('btn-clear').addEventListener('click', async () => {
+            const ok = await UI.confirm({ title: 'Очистить список посетителей?', message: 'Будут удалены все распознанные посетители, кроме сотрудников. События останутся, но потеряют привязку к профилям.', confirmText: 'Очистить' });
+            if (!ok) return;
+            try {
+                await api('/api/visitors/clear', { method: 'POST' });
+                UI.toast('Список посетителей очищен');
+                load(1);
+            } catch (error) {
+                UI.toast(error.message, { type: 'error', title: 'Не удалось очистить список' });
+            }
+        });
+
+        loadScanning();
+        load(1);
+    })();
 </script>
 {% endblock %}
