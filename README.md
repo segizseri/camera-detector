@@ -45,7 +45,12 @@ camera-detector/
 
 ## Безопасность
 
-Веб-панель, API и `/media` защищены Basic Auth, если `AUTH_ENABLED=true`. В обычном `docker-compose.yml` авторизация включена по умолчанию.
+Веб-панель, API и `/media` закрыты авторизацией, если `AUTH_ENABLED=true`. В обычном `docker-compose.yml` авторизация включена по умолчанию.
+
+- Браузер открывает страницу входа `/login`. После входа ставится подписанная HttpOnly-cookie `aibox_session` (SameSite=Lax): до закрытия браузера или на 30 дней с отметкой «Запомнить меня». Выход — кнопка внизу бокового меню.
+- Скрипты и интеграции могут по-прежнему слать Basic Auth (`curl -u admin:… http://host:4000/api/cameras/`). От браузеров Basic не принимается, чтобы выход из системы работал надёжно.
+- После 5 неверных паролей с одного адреса вход блокируется на 5 минут. Неудачная попытка отвечает HTTP 401, это удобно для fail2ban.
+- Смена `ADMIN_USER` или `ADMIN_PASS` завершает все сессии.
 
 Переменные:
 
@@ -53,6 +58,8 @@ camera-detector/
 AUTH_ENABLED=true
 ADMIN_USER=admin
 ADMIN_PASS=admin
+# Необязательно: отдельный ключ подписи cookie. По умолчанию используется ENCRYPTION_KEY.
+SESSION_SECRET=
 ```
 
 Перед реальным использованием измените `ADMIN_PASS`:
@@ -162,7 +169,7 @@ docker compose -f docker-compose.test.yml up -d --build
 http://localhost:4100
 ```
 
-Тестовая панель тоже защищена Basic Auth: логин и пароль `admin` / `admin` (переопределяются `ADMIN_USER` и `ADMIN_PASS`). Чтобы поднять её без логина:
+Тестовая панель тоже закрыта авторизацией: логин и пароль `admin` / `admin` (переопределяются `ADMIN_USER` и `ADMIN_PASS`). Чтобы поднять её без логина:
 
 ```bash
 TEST_AUTH_ENABLED=false docker compose -f docker-compose.test.yml up -d

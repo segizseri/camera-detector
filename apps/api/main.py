@@ -1,11 +1,13 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, FileResponse
-from libs.auth import basic_auth_middleware
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from libs import auth
+from libs.config import settings as app_settings
 from libs.database import engine, Base
 from libs.models import Camera, Event, Webhook
 from apps.api.routers import nvr, cameras, events, webhooks, settings, stats, buses, visitors, system, detection_tests
@@ -90,7 +92,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Camera Detector AI Box", lifespan=lifespan)
-app.middleware("http")(basic_auth_middleware)
+app.middleware("http")(auth.auth_middleware)
 
 os.makedirs("data/media/hls", exist_ok=True)
 os.makedirs("data/media/snapshots", exist_ok=True)
@@ -121,6 +123,51 @@ async def health():
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return FileResponse("apps/api/static/favicon.png")
+
+def _login_page(request: Request, next_url: str, *, error: str | None = None, username: str = "", status_code: int = 200):
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "next": next_url, "error": error, "username": username},
+        status_code=status_code,
+    )
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, next_url: str = Query("/", alias="next")):
+    if not app_settings.AUTH_ENABLED or auth.read_session(request.cookies.get(auth.SESSION_COOKIE)):
+        return RedirectResponse(auth.safe_next(next_url), status_code=303)
+    return _login_page(request, auth.safe_next(next_url))
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_submit(request: Request):
+    form = await request.form()
+    next_url = auth.safe_next(str(form.get("next") or "/"))
+    if not app_settings.AUTH_ENABLED:
+        return RedirectResponse(next_url, status_code=303)
+    username = str(form.get("username") or "").strip()
+    client = request.client.host if request.client else "unknown"
+
+    locked = auth.login_lockout_remaining(client)
+    if locked:
+        minutes = max(1, round(locked / 60))
+        return _login_page(request, next_url, username=username, status_code=429,
+                           error=f"Слишком много неудачных попыток. Повторите через {minutes} мин.")
+
+    if not auth.check_credentials(username, str(form.get("password") or "")):
+        auth.register_login_failure(client)
+        await asyncio.sleep(0.6)  # замедляем подбор пароля
+        return _login_page(request, next_url, username=username, status_code=401,
+                           error="Неверный логин или пароль.")
+
+    auth.reset_login_failures(client)
+    response = RedirectResponse(next_url, status_code=303)
+    auth.set_session_cookie(response, request, username, remember=form.get("remember") == "on")
+    return response
+
+@app.post("/logout")
+async def logout():
+    response = RedirectResponse("/login", status_code=303)
+    auth.clear_session_cookie(response)
+    return response
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):

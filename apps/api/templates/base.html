@@ -35,28 +35,8 @@
 <!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="color-scheme" content="dark light">
+{% include "_head.html" %}
     <title>{% block title %}AI Box{% endblock %} · AI Box</title>
-    <script>
-        (function () {
-            // Вход по адресу вида http://user:pass@host/ оставляет логин в базовом адресе документа:
-            // fetch('/api/…') тогда падает, а браузер блокирует картинки и видео. <base> без учётных
-            // данных возвращает нормальное разрешение относительных адресов.
-            if (/^[a-z]+:\/\/[^\/]*@/i.test(document.baseURI)) {
-                var base = document.createElement('base');
-                base.href = location.origin + location.pathname + location.search;
-                document.head.appendChild(base);
-            }
-            // Тема до первой отрисовки, чтобы не мигал светлый фон. По умолчанию тёмная.
-            try {
-                if (localStorage.getItem('ui.theme') === 'light') document.documentElement.dataset.theme = 'light';
-            } catch (e) { /* хранилище недоступно */ }
-        })();
-    </script>
-    <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/styles.css?v=20261027">
     {% block head %}{% endblock %}
 </head>
 <body>
@@ -87,9 +67,23 @@
             </ul>
             {% endfor %}
         </nav>
+        {% set user = request.state.user %}
+        {% if user %}
+        <div class="px-3 py-3 border-t border-line flex items-center gap-3 shrink-0">
+            <span class="avatar" aria-hidden="true">{{ user[:1] | upper }}</span>
+            <span class="min-w-0 flex-1">
+                <span class="block text-sm font-semibold text-fg truncate">{{ user }}</span>
+                <span class="block text-xs text-subtle">Администратор</span>
+            </span>
+            <form method="post" action="/logout">
+                <button type="submit" class="btn btn-ghost btn-sm btn-icon" aria-label="Выйти из системы" title="Выйти">{{ icon("log-out", "icon-sm") }}</button>
+            </form>
+        </div>
+        {% else %}
         <div class="px-4 py-3 border-t border-line text-xs text-subtle flex items-center justify-between gap-2 shrink-0">
             <span>Camera Detector · локальный сервер</span>
         </div>
+        {% endif %}
     </aside>
     <div id="app-scrim" class="app-scrim" hidden></div>
 

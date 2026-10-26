@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "true").lower() not in {"0", "false", "no", "off"}
     ADMIN_USER: str = os.getenv("ADMIN_USER", "admin")
     ADMIN_PASS: str = os.getenv("ADMIN_PASS", "admin")
+    # Ключ подписи cookie сессии; если пусто, используется ENCRYPTION_KEY.
+    SESSION_SECRET: str = os.getenv("SESSION_SECRET", "")
     HLS_IDLE_TIMEOUT_SECONDS: int = int(os.getenv("HLS_IDLE_TIMEOUT_SECONDS", "180"))
     RETENTION_SWEEP_INTERVAL_SECONDS: int = int(os.getenv("RETENTION_SWEEP_INTERVAL_SECONDS", "3600"))
     

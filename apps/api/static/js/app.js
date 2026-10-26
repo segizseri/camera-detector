@@ -180,6 +180,10 @@
     if (text) {
       try { data = JSON.parse(text); } catch (_) { data = text; }
     }
+    if (response.status === 401 && !location.pathname.startsWith('/login')) {
+      // Сессия истекла или пользователь вышел в другой вкладке: возвращаемся на страницу входа.
+      location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+    }
     if (!response.ok) {
       const detail = data && typeof data === 'object' ? detailMessage(data.detail || data.message || data.error) : '';
       throw new ApiError(detail || `Сервер ответил ошибкой (HTTP ${response.status}).`, response.status, data);
