@@ -124,6 +124,8 @@
 
 <script>
     const camId = "{{ camera_id }}";
+    let hlsInstance = null;
+    let hlsKeepaliveTimer = null;
 
     // UI binding
     const fpsInput = document.getElementById('input-fps');
@@ -192,6 +194,7 @@
         try {
             const hlsRes = await fetch(`/api/cameras/${camId}/trigger-hls`, { method: 'POST' });
             const data = await hlsRes.json();
+            startHlsKeepalive();
             initHls(data.hls_url);
         } catch (e) {
             showPlayerError();
@@ -205,32 +208,36 @@
         // Wait 3 seconds for ffmpeg to create index.m3u8
         setTimeout(() => {
             if (Hls.isSupported()) {
-                const hls = new Hls({
+                if (hlsInstance) {
+                    hlsInstance.destroy();
+                }
+                hlsInstance = new Hls({
                     maxBufferLength: 5,
                     maxMaxBufferLength: 10,
                 });
-                hls.loadSource(url);
-                hls.attachMedia(video);
-                hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                hlsInstance.loadSource(url);
+                hlsInstance.attachMedia(video);
+                hlsInstance.on(Hls.Events.MANIFEST_PARSED, function () {
                     loading.classList.add('hidden');
                     video.classList.remove('hidden');
                     video.play().catch(() => console.log('Autoplay prevented'));
                 });
-                hls.on(Hls.Events.ERROR, function (event, data) {
+                hlsInstance.on(Hls.Events.ERROR, function (event, data) {
                     if (data.fatal) {
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
                                 // try to recover network error
                                 console.log("fatal network error encountered, try to recover");
-                                hls.startLoad();
+                                hlsInstance.startLoad();
                                 break;
                             case Hls.ErrorTypes.MEDIA_ERROR:
                                 console.log("fatal media error encountered, try to recover");
-                                hls.recoverMediaError();
+                                hlsInstance.recoverMediaError();
                                 break;
                             default:
                                 // cannot recover
-                                hls.destroy();
+                                stopHlsKeepalive();
+                                hlsInstance.destroy();
                                 showPlayerError();
                                 break;
                         }
@@ -254,6 +261,29 @@
         document.getElementById('hls-player').classList.add('hidden');
         document.getElementById('player-error').classList.remove('hidden');
     }
+
+    function startHlsKeepalive() {
+        stopHlsKeepalive();
+        hlsKeepaliveTimer = setInterval(() => {
+            fetch(`/api/cameras/${camId}/hls-keepalive`, { method: 'POST', keepalive: true }).catch(() => {});
+        }, 30000);
+    }
+
+    function stopHlsKeepalive() {
+        if (hlsKeepaliveTimer) {
+            clearInterval(hlsKeepaliveTimer);
+            hlsKeepaliveTimer = null;
+        }
+    }
+
+    window.addEventListener('beforeunload', () => {
+        stopHlsKeepalive();
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(`/api/cameras/${camId}/stop-hls`, new Blob([]));
+        } else {
+            fetch(`/api/cameras/${camId}/stop-hls`, { method: 'POST', keepalive: true }).catch(() => {});
+        }
+    });
 
     document.getElementById('cam-settings-form').addEventListener('submit', async e => {
         e.preventDefault();

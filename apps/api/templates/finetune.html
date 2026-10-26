@@ -108,6 +108,27 @@
 <script>
     let currentCamId = null;
     let hls = null;
+    let hlsKeepaliveTimer = null;
+
+    function startHlsKeepalive(cameraId) {
+        stopHlsKeepalive();
+        hlsKeepaliveTimer = setInterval(() => {
+            fetch(`/api/cameras/${cameraId}/hls-keepalive`, { method: 'POST', keepalive: true }).catch(() => {});
+        }, 30000);
+    }
+
+    function stopHlsKeepalive() {
+        if (hlsKeepaliveTimer) {
+            clearInterval(hlsKeepaliveTimer);
+            hlsKeepaliveTimer = null;
+        }
+    }
+
+    function stopHlsStream(cameraId) {
+        if (!cameraId) return;
+        stopHlsKeepalive();
+        fetch(`/api/cameras/${cameraId}/stop-hls`, { method: 'POST', keepalive: true }).catch(() => {});
+    }
 
     async function loadCameras() {
         const res = await fetch('/api/cameras');
@@ -125,6 +146,7 @@
     }
 
     document.getElementById('camera-select').addEventListener('change', async (e) => {
+        const previousCamId = currentCamId;
         currentCamId = e.target.value;
         const video = document.getElementById('hls-player');
         const loading = document.getElementById('player-loading');
@@ -136,6 +158,9 @@
         if (hls) {
             hls.destroy();
             hls = null;
+        }
+        if (previousCamId && previousCamId !== currentCamId) {
+            stopHlsStream(previousCamId);
         }
         video.classList.add('hidden');
         error.classList.add('hidden');
@@ -155,6 +180,7 @@
         try {
             const hlsRes = await fetch(`/api/cameras/${currentCamId}/trigger-hls`, { method: 'POST' });
             const data = await hlsRes.json();
+            startHlsKeepalive(currentCamId);
             
             // Allow 3s for ffmpeg to start writing segments
             setTimeout(() => {
@@ -181,6 +207,7 @@
                                     hls.recoverMediaError();
                                     break;
                                 default:
+                                    stopHlsKeepalive();
                                     hls.destroy();
                                     showPlayerError(statusBadge);
                                     break;
@@ -202,6 +229,15 @@
             }, 3000);
         } catch (e) {
             showPlayerError(statusBadge);
+        }
+    });
+
+    window.addEventListener('beforeunload', () => {
+        if (navigator.sendBeacon && currentCamId) {
+            stopHlsKeepalive();
+            navigator.sendBeacon(`/api/cameras/${currentCamId}/stop-hls`, new Blob([]));
+        } else {
+            stopHlsStream(currentCamId);
         }
     });
 

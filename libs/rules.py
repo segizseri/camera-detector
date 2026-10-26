@@ -2,8 +2,36 @@ import time
 from collections import deque
 import numpy as np
 
+# YOLO-Pose returns (0, 0) for keypoints it cannot see; below this confidence a keypoint
+# is treated as missing instead of a real coordinate in the frame corner.
+KEYPOINT_CONF_THRESHOLD = 0.3
+
+
+def normalize_keypoints(box, keypoints, conf_threshold=KEYPOINT_CONF_THRESHOLD):
+    """Turn one person's 17 YOLO-Pose keypoints into ActionLSTM features.
+
+    Coordinates are centered on the bbox and divided by its longer side; keypoints with
+    confidence below `conf_threshold` are set to 0. Live inference, detection tests and
+    dataset extraction all call this, so train and serve features match.
+    """
+    kp = np.asarray(keypoints, dtype=np.float32)[:17]
+    x_min, y_min, x_max, y_max = (float(v) for v in box[:4])
+    w = x_max - x_min
+    h = y_max - y_min
+    cx = x_min + w / 2
+    cy = y_min + h / 2
+    scale = max(w, h) + 1e-6
+
+    processed = np.zeros((17, 2), dtype=np.float32)
+    processed[:, 0] = (kp[:, 0] - cx) / scale
+    processed[:, 1] = (kp[:, 1] - cy) / scale
+    if kp.shape[1] > 2:
+        processed[kp[:, 2] < conf_threshold] = 0.0
+    return processed
+
+
 class AIActionDetector:
-    def __init__(self, camera_id):
+    def __init__(self, camera_id, weights_path=None):
         self.camera_id = camera_id
         # Classes: 0 (Normal), 1 (Fight), 2 (Bullying), 3 (Theft), 4 (Shoplifting), 5 (Eating)
         self.cooldowns = {1: 20, 2: 30, 3: 40, 4: 30, 5: 30}
@@ -17,10 +45,19 @@ class AIActionDetector:
         
         from libs.ai_models import create_or_load_model
         import torch
-        self.model = create_or_load_model()
+        self.model = create_or_load_model(weights_path)
         self.torch = torch
+        # Without trained weights the LSTM would classify with random weights, so action
+        # detection stays off; person counting, passengers and Re-ID do not depend on it.
+        self.enabled = self.model is not None
+        if not self.enabled:
+            print(f"[{camera_id}] ActionLSTM weights not found: action detection "
+                  f"(fight/bullying/theft/shoplifting/eating) is DISABLED. Passenger counting "
+                  f"and Re-ID keep working. Train a model with scripts/train_lstm.py --extract --train.")
         
     def add_frame(self, bboxes, keypoints, track_ids, timestamp):
+        if not self.enabled:
+            return 0, 0.0, None
         if keypoints is None or len(keypoints) == 0 or keypoints.shape[1] < 17 or not track_ids:
             self.history.append((0, 1.0, None))
             return self._get_smoothed_prediction()
@@ -37,19 +74,7 @@ class AIActionDetector:
                 if i >= len(bboxes) or i >= len(keypoints):
                     continue
                 track_id = int(track_id)
-                box = bboxes[i]
-                kp = keypoints[i]
-                
-                x_min, y_min, x_max, y_max = box[:4]
-                w = x_max - x_min
-                h = y_max - y_min
-                cx = x_min + w / 2
-                cy = y_min + h / 2
-                scale = max(w, h) + 1e-6
-                
-                processed = np.zeros((17, 2), dtype=np.float32)
-                processed[:, 0] = (kp[:, 0] - cx) / scale
-                processed[:, 1] = (kp[:, 1] - cy) / scale
+                processed = normalize_keypoints(bboxes[i], keypoints[i])
                 
                 if track_id not in self.track_buffers:
                     self.track_buffers[track_id] = deque(maxlen=self.seq_len)
@@ -94,7 +119,9 @@ class PersonDetector:
         self.cooldown = 30 # seconds
         
     def check_alert(self, bboxes):
-        people = [b for b in bboxes if int(b[5]) == 0]
+        # Rows are [x1, y1, x2, y2, conf, cls] or, with tracking, [x1, y1, x2, y2, id, conf, cls]:
+        # the class is always the last column.
+        people = [b for b in bboxes if int(b[-1]) == 0]
         return len(people) > 0, len(people)
 
 class PassengerCounter:

@@ -1,4 +1,4 @@
-import cv2
+import json
 import time
 import queue
 import threading
@@ -11,17 +11,31 @@ from libs.rules import PersonDetector, AIActionDetector, PassengerCounter
 from libs.webhooks import queue_webhook
 from libs.config import settings
 
+def _point_in_polygon(x, y, polygon):
+    """Even-odd ray casting test; polygon is a list of [x, y] points."""
+    inside = False
+    j = len(polygon) - 1
+    for i in range(len(polygon)):
+        xi, yi = polygon[i][0], polygon[i][1]
+        xj, yj = polygon[j][0], polygon[j][1]
+        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
 class CameraPipeline:
     def __init__(self, camera_id: str, rtsp_url: str, fps_limit: int):
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
-        self.fps_limit = fps_limit
-        self.interval = 1.0 / (fps_limit if fps_limit > 0 else 5)
+        self.fps_limit = None  # set by set_fps_limit() below
+        self.interval = 1.0 / 5
         
         self.frame_queue = queue.Queue(maxsize=2) # Drop frames if AI is slow
-        self.ring_buffer = deque(maxlen=fps_limit * 12) # ~12 seconds history (6s before, 6s after)
+        self.ring_buffer = deque(maxlen=5 * 12) # ~12 seconds history (6s before, 6s after)
         
         self.running = True
+        self.ai_enabled = True
         self.person_det = PersonDetector(camera_id)
         self.action_det = AIActionDetector(camera_id)
         self.passenger_counter = PassengerCounter(camera_id)
@@ -36,10 +50,39 @@ class CameraPipeline:
         self.detect_passengers = True
         self.detect_shoplifting = True
         self.detect_eating = True
+        self.theft_zone = None
         self.display_zone = None
+        self.set_fps_limit(fps_limit)
         
         self.ingest_thread = threading.Thread(target=self._ingest_loop, daemon=True)
         self.ingest_thread.start()
+
+    def set_fps_limit(self, fps_limit: int | None):
+        fps = max(1, int(fps_limit or 5))
+        if fps == self.fps_limit:
+            return
+        self.fps_limit = fps
+        self.interval = 1.0 / fps
+        self.ring_buffer = deque(self.ring_buffer, maxlen=fps * 12)
+        train_fps = settings.ACTION_SAMPLE_FPS
+        if fps != train_fps:
+            seq_len = self.action_det.seq_len
+            print(f"[{self.camera_id}] WARNING: fps_limit={fps} differs from the ActionLSTM training rate "
+                  f"{train_fps:g} FPS: a {seq_len}-frame window covers {seq_len / fps:.1f}s instead of "
+                  f"{seq_len / train_fps:.1f}s, action detection will be less reliable.")
+
+    def apply_camera_config(self, camera: Camera):
+        self.set_fps_limit(camera.fps_limit)
+        self.ai_enabled = camera.ai_enabled
+        self.theft_zone = camera.theft_zone
+        self.display_zone = camera.display_zone
+        self.counting_config = camera.counting_config
+        self.detect_fights = camera.detect_fights
+        self.detect_bullying = camera.detect_bullying
+        self.detect_theft = camera.detect_theft
+        self.detect_passengers = camera.detect_passengers
+        self.detect_shoplifting = camera.detect_shoplifting
+        self.detect_eating = camera.detect_eating
 
     def get_latest_frame(self):
         try:
@@ -49,6 +92,7 @@ class CameraPipeline:
 
     def _ingest_loop(self):
         import os
+        import cv2
         while self.running:
             # Reconnect logic
             print(f"[{self.camera_id}] Connecting to RTSP...")
@@ -138,52 +182,12 @@ class CameraPipeline:
             
             if action_class > 0 and action_prob > self.action_det.thresholds.get(action_class, 0.6):
                 
-                # Check Theft Zone
-                # ROI check for cash register theft (class 3)
-                if action_class == 3 and hasattr(self, 'theft_zone') and self.theft_zone:
-                    try:
-                        import json, numpy as np, cv2
-                        zone_pts = json.loads(self.theft_zone)
-                        if len(zone_pts) >= 3:
-                            h, w = frame.shape[:2]
-                            contour = np.array([[[int(p[0]*w), int(p[1]*h)]] for p in zone_pts], dtype=np.int32)
-                            
-                            is_inside = False
-                            for box in bboxes:
-                                cx = (box[0] + box[2]) / 2.0
-                                cy = (box[1] + box[3]) / 2.0
-                                if cv2.pointPolygonTest(contour, (float(cx), float(cy)), False) >= 0:
-                                    is_inside = True
-                                    break
-                                    
-                            if not is_inside:
-                                return # Skip detection if out of zone!
-                    except Exception as e:
-                        print(f"Error evaluating theft zone ROI: {e}")
+                # ROI: theft (3) counts only at the cash register zone, shoplifting (4) and
+                # eating (5) only at the display zone, and only if the person who did it is there.
+                zone = self.theft_zone if action_class == 3 else self.display_zone if action_class in (4, 5) else None
+                in_zone = not zone or self._track_in_zone(zone, bboxes, ids, track_id_of_action, frame)
 
-                # ROI check for display case shoplifting (class 4) and eating (class 5)
-                if action_class in (4, 5) and hasattr(self, 'display_zone') and self.display_zone:
-                    try:
-                        import json, numpy as np, cv2
-                        zone_pts = json.loads(self.display_zone)
-                        if len(zone_pts) >= 3:
-                            h, w = frame.shape[:2]
-                            contour = np.array([[[int(p[0]*w), int(p[1]*h)]] for p in zone_pts], dtype=np.int32)
-                            
-                            is_inside = False
-                            for box in bboxes:
-                                cx = (box[0] + box[2]) / 2.0
-                                cy = (box[1] + box[3]) / 2.0
-                                if cv2.pointPolygonTest(contour, (float(cx), float(cy)), False) >= 0:
-                                    is_inside = True
-                                    break
-                                    
-                            if not is_inside:
-                                return # Skip detection if out of display zone!
-                    except Exception as e:
-                        print(f"Error evaluating display zone ROI: {e}")
-
-                if now - self.action_det.last_alerts.get(action_class, 0) > self.action_det.cooldowns.get(action_class, 30):
+                if in_zone and now - self.action_det.last_alerts.get(action_class, 0) > self.action_det.cooldowns.get(action_class, 30):
                     self.action_det.last_alerts[action_class] = now
                     
                     event_types = {1: "fight_suspected", 2: "bullying_suspected", 3: "theft_suspected", 4: "shoplifting_suspected", 5: "eating_suspected"}
@@ -200,6 +204,23 @@ class CameraPipeline:
         if now - self.last_db_save > 60:
             self.last_db_save = now
             self._save_passenger_stats()
+
+    def _track_in_zone(self, zone_json, bboxes, ids, track_id, frame):
+        """Is the bbox center of `track_id` inside the zone polygon (normalized 0-1 points)?"""
+        try:
+            zone_pts = json.loads(zone_json)
+            if len(zone_pts) < 3:
+                return True  # No usable zone configured
+            box = next((b for b, tid in zip(bboxes, ids) if int(tid) == track_id), None)
+            if box is None:
+                return False  # The actor is not in this frame, so it cannot be placed in the zone
+            h, w = frame.shape[:2]
+            cx = (box[0] + box[2]) / 2.0 / w
+            cy = (box[1] + box[3]) / 2.0 / h
+            return _point_in_polygon(cx, cy, zone_pts)
+        except Exception as e:
+            print(f"Error evaluating ROI zone: {e}")
+            return True
 
     def _save_passenger_stats(self):
         from libs.models import PassengerCount
@@ -282,6 +303,7 @@ class CameraPipeline:
         
         # Draw Russian event type label on frame (using Pillow)
         try:
+            import numpy as np
             from PIL import Image, ImageDraw, ImageFont
             pil_img = Image.fromarray(cv2.cvtColor(draw_frame, cv2.COLOR_BGR2RGB))
             draw = ImageDraw.Draw(pil_img)
@@ -372,4 +394,4 @@ class CameraPipeline:
 
     def stop(self):
         self.running = False
-        self.ingest_thread.join()
+        self.ingest_thread.join(timeout=5)

@@ -25,7 +25,9 @@ def send_webhook(event_data):
                     message = f"🚨 <b>{event_data.get('event_type_ru', 'Событие')}</b>\n"
                     message += f"Камера: {event_data.get('camera_id')}\n"
                     message += f"Время: {event_data.get('timestamp')}\n"
-                    message += f"Уверенность: {event_data.get('confidence', 0)*100:.1f}%\n"
+                    # camera_offline and other system events have no confidence
+                    if event_data.get('confidence') is not None:
+                        message += f"Уверенность: {event_data['confidence']*100:.1f}%\n"
 
                     snapshot_path = None
                     if event_data.get('snapshot_url'):
@@ -67,9 +69,11 @@ def queue_webhook(event):
     label_map = {
         'person_detected': 'Обнаружен человек',
         'fight_suspected': 'Подозрение на драку',
+        'bullying_suspected': 'Подозрение на буллинг',
         'theft_suspected': 'Подозрение на кражу',
         'camera_offline': 'Камера отключена',
-        'shoplifting_suspected': 'Подозрение на кражу из витрины'
+        'shoplifting_suspected': 'Подозрение на кражу из витрины',
+        'eating_suspected': 'Подозрение на поедание/распитие у витрины'
     }
     
     event_data = {

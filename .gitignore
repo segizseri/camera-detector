@@ -1,7 +1,9 @@
 data/
+data-test/
 __pycache__/
 *.pyc
 *.log
 .env
 .DS_Store
 tailwindcss-linux-x64
+.idea/

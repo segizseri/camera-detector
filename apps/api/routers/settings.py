@@ -52,7 +52,6 @@ async def trigger_training():
         # Create a trigger file that the worker container will notice
         with open("data/.trigger_train_lstm", "w") as f:
             f.write("trigger")
-        return {"status": "success", "message": "Обучение запущено в фоновом режиме"}
+        return {"status": "success", "message": "Извлечение скелетов и обучение запущены в фоновом режиме"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-

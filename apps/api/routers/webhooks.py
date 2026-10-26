@@ -7,9 +7,19 @@ import uuid
 
 router = APIRouter()
 
+def public_webhook(wh: Webhook) -> dict:
+    return {
+        "id": wh.id,
+        "hook_type": wh.hook_type,
+        "name": wh.name,
+        "url": wh.url,
+        "enabled": wh.enabled,
+        "secret_configured": bool(wh.secret),
+    }
+
 @router.get("/")
 def get_webhooks(db: Session = Depends(get_db)):
-    return db.query(Webhook).all()
+    return [public_webhook(wh) for wh in db.query(Webhook).all()]
 
 @router.post("/")
 def create_webhook(webhook: WebhookCreate, db: Session = Depends(get_db)):
@@ -24,7 +34,7 @@ def create_webhook(webhook: WebhookCreate, db: Session = Depends(get_db)):
     db.add(wh)
     db.commit()
     db.refresh(wh)
-    return wh
+    return public_webhook(wh)
 
 @router.patch("/{webhook_id}")
 def update_webhook(webhook_id: str, update: WebhookUpdate, db: Session = Depends(get_db)):
@@ -45,7 +55,7 @@ def update_webhook(webhook_id: str, update: WebhookUpdate, db: Session = Depends
         
     db.commit()
     db.refresh(wh)
-    return wh
+    return public_webhook(wh)
 
 @router.delete("/{webhook_id}")
 def delete_webhook(webhook_id: str, db: Session = Depends(get_db)):

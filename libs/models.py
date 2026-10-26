@@ -118,3 +118,32 @@ class GlobalSetting(Base):
     key = Column(String, primary_key=True, index=True)
     value = Column(String)
     description = Column(String, nullable=True)
+
+
+class DetectionTestJob(Base):
+    __tablename__ = "detection_test_jobs"
+
+    id = Column(String, primary_key=True, index=True)
+    source_type = Column(String, nullable=False)  # youtube | upload
+    source_url = Column(Text, nullable=True)
+    original_filename = Column(String, nullable=True)
+    input_path = Column(Text, nullable=True)
+    output_video_path = Column(Text, nullable=True)
+
+    status = Column(String, default="queued", nullable=False)
+    stage = Column(String, default="queued", nullable=False)
+    progress = Column(Float, default=0.0, nullable=False)
+    error = Column(Text, nullable=True)
+
+    detectors_json = Column(Text, nullable=False)
+    model_key = Column(String, default="general", nullable=False)
+    sample_fps = Column(Float, default=5.0, nullable=False)
+    duration_seconds = Column(Float, nullable=True)
+    processed_frames = Column(Integer, default=0, nullable=False)
+    total_frames = Column(Integer, nullable=True)
+    results_json = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)

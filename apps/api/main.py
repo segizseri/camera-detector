@@ -1,11 +1,14 @@
 import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Depends, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, FileResponse
+from libs.auth import basic_auth_middleware
 from libs.database import engine, Base
 from libs.models import Camera, Event, Webhook
-from apps.api.routers import nvr, cameras, events, webhooks, settings, stats, buses, visitors
+from apps.api.routers import nvr, cameras, events, webhooks, settings, stats, buses, visitors, system, detection_tests
 
 Base.metadata.create_all(bind=engine)
 
@@ -68,11 +71,31 @@ def migrate_buses():
 
 migrate_buses()
 
-app = FastAPI(title="Camera Detector AI Box")
+def migrate_camera_credentials():
+    from libs.camera_migration import migrate_rtsp_credentials
+    from libs.database import SessionLocal
+    db = SessionLocal()
+    try:
+        updated = migrate_rtsp_credentials(db)
+        if updated:
+            print(f"[migrate] Stripped credentials from {updated} camera RTSP URLs")
+    finally:
+        db.close()
+
+migrate_camera_credentials()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    cameras.start_hls_reaper()
+    yield
+
+app = FastAPI(title="Camera Detector AI Box", lifespan=lifespan)
+app.middleware("http")(basic_auth_middleware)
 
 os.makedirs("data/media/hls", exist_ok=True)
 os.makedirs("data/media/snapshots", exist_ok=True)
 os.makedirs("data/media/clips", exist_ok=True)
+os.makedirs("data/media/detection-tests", exist_ok=True)
 os.makedirs("apps/api/static", exist_ok=True)
 
 app.mount("/static", StaticFiles(directory="apps/api/static"), name="static")
@@ -88,6 +111,12 @@ app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
 app.include_router(buses.router, prefix="/api/buses", tags=["Buses"])
 app.include_router(visitors.router, prefix="/api/visitors", tags=["Visitors"])
+app.include_router(system.router, prefix="/api/system", tags=["System"])
+app.include_router(detection_tests.router, prefix="/api/detection-tests", tags=["Detection tests"])
+
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
@@ -112,6 +141,10 @@ async def camera_detail_page(request: Request, camera_id: str):
 @app.get("/ai", response_class=HTMLResponse)
 async def ai_page(request: Request):
     return templates.TemplateResponse("ai.html", {"request": request})
+
+@app.get("/detection-test", response_class=HTMLResponse)
+async def detection_test_page(request: Request):
+    return templates.TemplateResponse(request, "detection_test.html")
 
 @app.get("/events-page", response_class=HTMLResponse)
 async def events_page(request: Request):

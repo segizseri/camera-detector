@@ -1,0 +1,433 @@
+{% extends "base.html" %}
+{% block title %}Проверка детекций | Laptop AI Box{% endblock %}
+{% block content %}
+<div class="mb-6 flex justify-between items-start gap-4">
+    <div>
+        <h1 class="text-3xl font-bold">Проверка детекций на видео</h1>
+        <p class="text-gray-400 mt-1">Вставьте ссылку YouTube или загрузите видео. Worker построит размеченную копию и покажет события с таймкодами.</p>
+    </div>
+    <div id="model-badge" class="px-3 py-2 bg-gray-700 text-sm rounded-full whitespace-nowrap">
+        <i class="fas fa-spinner fa-spin mr-2"></i>Проверка модели
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <section class="lg:col-span-1 bg-gray-800 rounded-lg shadow-xl border border-gray-700 p-6 h-fit">
+        <h2 class="text-xl font-bold mb-5">Новое видео</h2>
+
+        <div class="grid grid-cols-2 gap-2 mb-5">
+            <button id="source-youtube" type="button" class="source-button bg-red-600 text-white py-2 px-3 rounded font-bold">
+                <i class="fab fa-youtube mr-2"></i>YouTube
+            </button>
+            <button id="source-upload" type="button" class="source-button bg-gray-700 hover:bg-gray-600 text-white py-2 px-3 rounded font-bold">
+                <i class="fas fa-upload mr-2"></i>Файл
+            </button>
+        </div>
+
+        <div id="youtube-fields" class="mb-5">
+            <label for="youtube-url" class="block text-sm text-gray-300 mb-2">Ссылка на YouTube</label>
+            <input id="youtube-url" type="url" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white placeholder-gray-400" placeholder="https://www.youtube.com/watch?v=...">
+            <p class="text-xs text-gray-500 mt-2">Плейлисты не загружаются — анализируется только одно видео.</p>
+        </div>
+
+        <div id="upload-fields" class="mb-5 hidden">
+            <label for="video-file" class="block text-sm text-gray-300 mb-2">Видеофайл</label>
+            <input id="video-file" type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,.m4v" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white">
+            <p id="upload-limit" class="text-xs text-gray-500 mt-2">MP4, MOV, AVI, MKV, WebM или M4V.</p>
+        </div>
+
+        <div class="mb-5">
+            <div class="flex justify-between items-center mb-2">
+                <label class="block text-sm text-gray-300">Какие детекции проверять</label>
+                <button id="select-all" type="button" class="text-xs text-blue-400 hover:text-blue-300">Выбрать все</button>
+            </div>
+            <div class="space-y-2 bg-gray-900 rounded p-3 border border-gray-700">
+                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="fight" checked><span>Драка</span></label>
+                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="bullying" checked><span>Буллинг</span></label>
+                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="theft" checked><span>Кража</span></label>
+                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="passengers" checked><span>Счетчик пассажиров</span></label>
+                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="shoplifting" checked><span>Кража из витрины</span></label>
+                <label class="flex items-center gap-3"><input class="detector-check" type="checkbox" value="eating" checked><span>Поедание у витрины</span></label>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">Для счетчика на кадр наносится горизонтальная линия по центру.</p>
+        </div>
+
+        <div class="mb-5">
+            <label for="model-key" class="block text-sm text-gray-300 mb-2">AI-модель</label>
+            <select id="model-key" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white">
+                <option value="general">Загрузка списка моделей...</option>
+            </select>
+            <p id="model-help" class="text-xs text-gray-500 mt-2">Общая модель проверяет все классы действий.</p>
+        </div>
+
+        <div class="mb-5">
+            <label for="sample-fps" class="block text-sm text-gray-300 mb-2">Частота анализа</label>
+            <select id="sample-fps" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white">
+                <option value="2">2 FPS — быстрее</option>
+                <option value="5" selected>5 FPS — как при обучении</option>
+                <option value="10">10 FPS — подробнее</option>
+            </select>
+        </div>
+
+        <div id="form-error" class="hidden bg-red-900 border border-red-700 text-red-200 rounded p-3 text-sm mb-4"></div>
+        <p class="text-xs text-yellow-400 mb-3"><i class="fas fa-info-circle mr-1"></i>В офлайн-проверке ROI камеры не применяется: действия ищутся по всему кадру.</p>
+        <button id="start-analysis" type="button" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded shadow disabled:opacity-50 disabled:cursor-not-allowed">
+            <i class="fas fa-play mr-2"></i>Запустить анализ
+        </button>
+    </section>
+
+    <section class="lg:col-span-2 space-y-6">
+        <div id="empty-result" class="bg-gray-800 rounded-lg border border-gray-700 min-h-96 flex flex-col items-center justify-center text-gray-500 p-8 text-center">
+            <i class="fas fa-film text-6xl mb-4"></i>
+            <p class="text-lg">Результат анализа появится здесь</p>
+            <p class="text-sm mt-2">Видео обрабатывается в фоне — страницу можно оставить открытой.</p>
+        </div>
+
+        <div id="job-result" class="hidden space-y-6">
+            <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 p-5">
+                <div class="flex justify-between items-start gap-4 mb-3">
+                    <div>
+                        <h2 id="job-title" class="text-xl font-bold">Анализ видео</h2>
+                        <p id="job-meta" class="text-xs text-gray-500 mt-1"></p>
+                    </div>
+                    <span id="job-status" class="px-3 py-1 bg-gray-700 text-xs rounded-full uppercase">В очереди</span>
+                </div>
+                <div class="w-full bg-gray-900 rounded-full h-3 overflow-hidden">
+                    <div id="job-progress" class="bg-blue-600 h-3 transition-all" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between text-sm mt-2">
+                    <span id="job-stage" class="text-gray-400">Ожидание worker</span>
+                    <span id="job-percent" class="text-gray-300">0%</span>
+                </div>
+                <div id="job-error" class="hidden bg-red-900 border border-red-700 text-red-200 rounded p-3 text-sm mt-4"></div>
+            </div>
+
+            <div id="video-panel" class="hidden bg-gray-800 rounded-lg shadow-xl border border-gray-700 overflow-hidden">
+                <div class="aspect-video bg-black flex items-center justify-center">
+                    <video id="result-video" controls preload="metadata" class="w-full h-full"></video>
+                </div>
+                <div class="p-3 text-xs text-gray-500">Красная надпись DETECTED означает, что класс прошел порог уверенности. Синяя линия используется счетчиком пассажиров.</div>
+            </div>
+
+            <div id="summary-panel" class="hidden grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div class="bg-gray-800 rounded border border-gray-700 p-4"><div class="text-gray-400 text-xs">Событий</div><div id="summary-events" class="text-2xl font-bold mt-1">0</div></div>
+                <div class="bg-gray-800 rounded border border-gray-700 p-4"><div class="text-gray-400 text-xs">Людей максимум</div><div id="summary-people" class="text-2xl font-bold mt-1">0</div></div>
+                <div class="bg-gray-800 rounded border border-gray-700 p-4"><div class="text-gray-400 text-xs">Пассажиры: вход</div><div id="summary-in" class="text-2xl font-bold mt-1 text-green-400">0</div></div>
+                <div class="bg-gray-800 rounded border border-gray-700 p-4"><div class="text-gray-400 text-xs">Пассажиры: выход</div><div id="summary-out" class="text-2xl font-bold mt-1 text-yellow-400">0</div></div>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 p-5">
+                <h2 class="text-xl font-bold mb-4">Найденные события</h2>
+                <div id="events-empty" class="text-gray-500 text-sm py-6 text-center">Пока событий нет.</div>
+                <div id="events-list" class="space-y-3"></div>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg shadow-xl border border-gray-700 p-5">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Последние проверки</h2>
+                <button id="refresh-history" type="button" class="text-blue-400 hover:text-blue-300 text-sm"><i class="fas fa-sync-alt mr-1"></i>Обновить</button>
+            </div>
+            <div id="history-list" class="space-y-2 text-sm text-gray-400">Загрузка...</div>
+        </div>
+    </section>
+</div>
+
+<script>
+    const stageLabels = {
+        queued: 'Ожидание AI worker',
+        preparing: 'Подготовка задания',
+        downloading: 'Загрузка с YouTube',
+        opening: 'Открытие видео',
+        loading_models: 'Загрузка AI-моделей',
+        analyzing: 'Распознавание поз и действий',
+        encoding: 'Подготовка видео результата',
+        completed: 'Анализ завершен',
+        failed: 'Ошибка анализа'
+    };
+    const statusLabels = { queued: 'В очереди', processing: 'Обработка', completed: 'Готово', failed: 'Ошибка' };
+    let sourceType = 'youtube';
+    let currentJobId = null;
+    let pollTimer = null;
+    let modelAvailable = false;
+    let availableModels = {};
+    let renderedJobId = null;
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+    }
+
+    function formatTime(seconds) {
+        const safe = Math.max(0, Number(seconds) || 0);
+        const minutes = Math.floor(safe / 60);
+        const rest = Math.floor(safe % 60);
+        return `${minutes}:${String(rest).padStart(2, '0')}`;
+    }
+
+    function setSource(type) {
+        sourceType = type;
+        document.getElementById('youtube-fields').classList.toggle('hidden', type !== 'youtube');
+        document.getElementById('upload-fields').classList.toggle('hidden', type !== 'upload');
+        document.getElementById('source-youtube').className = type === 'youtube'
+            ? 'source-button bg-red-600 text-white py-2 px-3 rounded font-bold'
+            : 'source-button bg-gray-700 hover:bg-gray-600 text-white py-2 px-3 rounded font-bold';
+        document.getElementById('source-upload').className = type === 'upload'
+            ? 'source-button bg-blue-600 text-white py-2 px-3 rounded font-bold'
+            : 'source-button bg-gray-700 hover:bg-gray-600 text-white py-2 px-3 rounded font-bold';
+    }
+
+    function showFormError(message) {
+        const box = document.getElementById('form-error');
+        box.textContent = message;
+        box.classList.remove('hidden');
+    }
+
+    async function parseResponse(response) {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || `Ошибка HTTP ${response.status}`);
+        return data;
+    }
+
+    async function loadSystem() {
+        try {
+            const data = await parseResponse(await fetch('/api/detection-tests/system'));
+            availableModels = data.models || { general: data.model };
+            const modelSelect = document.getElementById('model-key');
+            modelSelect.innerHTML = Object.entries(availableModels).map(([key, model]) =>
+                `<option value="${escapeHtml(key)}" ${model.available ? '' : 'disabled'}>${escapeHtml(model.label || model.filename)}${model.available ? '' : ' — нет файла'}</option>`
+            ).join('');
+            const firstAvailable = Object.entries(availableModels).find(([, model]) => model.available);
+            if (firstAvailable) modelSelect.value = availableModels.general?.available ? 'general' : firstAvailable[0];
+            updateModelAvailability();
+            document.getElementById('upload-limit').textContent = `MP4, MOV, AVI, MKV, WebM или M4V, до ${data.max_upload_mb} МБ и ${Math.floor(data.max_duration_seconds / 60)} минут.`;
+        } catch (error) {
+            showFormError(error.message);
+        }
+    }
+
+    function updateModelAvailability() {
+        const modelKey = document.getElementById('model-key').value;
+        const selectedModel = availableModels[modelKey];
+        modelAvailable = Boolean(selectedModel?.available);
+        const badge = document.getElementById('model-badge');
+        const start = document.getElementById('start-analysis');
+        const help = document.getElementById('model-help');
+        if (modelAvailable) {
+            badge.className = 'px-3 py-2 bg-green-900 text-green-300 border border-green-700 text-sm rounded-full whitespace-nowrap';
+            badge.innerHTML = `<i class="fas fa-check-circle mr-2"></i>${escapeHtml(selectedModel.label || 'Модель загружена')}`;
+            start.disabled = false;
+        } else {
+            badge.className = 'px-3 py-2 bg-red-900 text-red-300 border border-red-700 text-sm rounded-full whitespace-nowrap';
+            badge.innerHTML = '<i class="fas fa-times-circle mr-2"></i>Модель не обучена';
+            start.disabled = true;
+        }
+        help.textContent = modelKey === 'eating'
+            ? 'Исследовательский кандидат распознает только Normal и Eating; остальные классы этой моделью не проверяются.'
+            : 'Общая модель проверяет все классы действий.';
+        if (modelKey === 'eating') {
+            document.querySelectorAll('.detector-check').forEach(item => {
+                if (!['eating', 'passengers'].includes(item.value)) item.checked = false;
+            });
+            document.querySelector('.detector-check[value="eating"]').checked = true;
+        }
+    }
+
+    async function startAnalysis() {
+        document.getElementById('form-error').classList.add('hidden');
+        if (!modelAvailable) return showFormError('Обученная модель не найдена.');
+        const detectors = [...document.querySelectorAll('.detector-check:checked')].map(item => item.value);
+        if (!detectors.length) return showFormError('Выберите хотя бы один детектор.');
+
+        const button = document.getElementById('start-analysis');
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Создание задания...';
+        try {
+            let response;
+            if (sourceType === 'youtube') {
+                const url = document.getElementById('youtube-url').value.trim();
+                if (!url) throw new Error('Вставьте ссылку на YouTube.');
+                response = await fetch('/api/detection-tests/youtube', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, detectors, model_key: document.getElementById('model-key').value, sample_fps: Number(document.getElementById('sample-fps').value) })
+                });
+            } else {
+                const file = document.getElementById('video-file').files[0];
+                if (!file) throw new Error('Выберите видеофайл.');
+                const body = new FormData();
+                body.append('video', file);
+                body.append('detectors', JSON.stringify(detectors));
+                body.append('model_key', document.getElementById('model-key').value);
+                body.append('sample_fps', document.getElementById('sample-fps').value);
+                response = await fetch('/api/detection-tests/upload', { method: 'POST', body });
+            }
+            const job = await parseResponse(response);
+            currentJobId = job.id;
+            renderJob(job);
+            startPolling();
+            loadHistory();
+        } catch (error) {
+            showFormError(error.message);
+        } finally {
+            button.disabled = !modelAvailable;
+            button.innerHTML = '<i class="fas fa-play mr-2"></i>Запустить анализ';
+        }
+    }
+
+    function startPolling() {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(async () => {
+            if (!currentJobId) return;
+            try {
+                const job = await parseResponse(await fetch(`/api/detection-tests/${currentJobId}`));
+                renderJob(job);
+                if (job.status === 'completed' || job.status === 'failed') {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                    loadHistory();
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }, 2000);
+    }
+
+    function renderJob(job) {
+        if (renderedJobId !== job.id) {
+            const video = document.getElementById('result-video');
+            video.pause();
+            video.removeAttribute('src');
+            delete video.dataset.url;
+            video.load();
+            document.getElementById('video-panel').classList.add('hidden');
+            document.getElementById('summary-panel').classList.add('hidden');
+            document.getElementById('events-list').innerHTML = '';
+            document.getElementById('events-empty').classList.remove('hidden');
+            renderedJobId = job.id;
+        }
+        document.getElementById('empty-result').classList.add('hidden');
+        document.getElementById('job-result').classList.remove('hidden');
+        document.getElementById('job-title').textContent = job.original_filename || 'YouTube video';
+        const duration = job.duration_seconds ? ` • ${formatTime(job.duration_seconds)}` : '';
+        const modelLabel = availableModels[job.model_key]?.label || job.model_key || 'general';
+        document.getElementById('job-meta').textContent = `Задание ${job.id.slice(0, 8)} • ${modelLabel} • ${job.sample_fps} FPS${duration}`;
+        const status = document.getElementById('job-status');
+        status.textContent = statusLabels[job.status] || job.status;
+        status.className = 'px-3 py-1 text-xs rounded-full uppercase ' + (
+            job.status === 'completed' ? 'bg-green-700 text-white' :
+            job.status === 'failed' ? 'bg-red-700 text-white' :
+            job.status === 'processing' ? 'bg-blue-700 text-white' : 'bg-gray-700'
+        );
+        const progress = Math.max(0, Math.min(100, Number(job.progress) || 0));
+        document.getElementById('job-progress').style.width = `${progress}%`;
+        document.getElementById('job-progress').className = `h-3 transition-all ${job.status === 'failed' ? 'bg-red-600' : 'bg-blue-600'}`;
+        document.getElementById('job-percent').textContent = `${Math.round(progress)}%`;
+        document.getElementById('job-stage').textContent = stageLabels[job.stage] || job.stage;
+        const errorBox = document.getElementById('job-error');
+        if (job.error) {
+            errorBox.textContent = job.error;
+            errorBox.classList.remove('hidden');
+        } else {
+            errorBox.classList.add('hidden');
+        }
+
+        if (job.video_url) {
+            const video = document.getElementById('result-video');
+            if (video.dataset.url !== job.video_url) {
+                video.src = job.video_url;
+                video.dataset.url = job.video_url;
+                video.load();
+            }
+            document.getElementById('video-panel').classList.remove('hidden');
+        }
+
+        const results = job.results || {};
+        if (job.status === 'completed' || results.event_count !== undefined) {
+            document.getElementById('summary-panel').classList.remove('hidden');
+            document.getElementById('summary-events').textContent = results.event_count || 0;
+            document.getElementById('summary-people').textContent = results.max_people || 0;
+            document.getElementById('summary-in').textContent = results.passenger_counts?.in || 0;
+            document.getElementById('summary-out').textContent = results.passenger_counts?.out || 0;
+        }
+        renderEvents(results.events || []);
+    }
+
+    function renderEvents(events) {
+        const list = document.getElementById('events-list');
+        document.getElementById('events-empty').classList.toggle('hidden', events.length > 0);
+        list.innerHTML = events.map(event => {
+            const confidence = `${Math.round((Number(event.confidence) || 0) * 100)}%`;
+            const snapshot = event.snapshot_url
+                ? `<a href="${escapeHtml(event.snapshot_url)}" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm"><i class="fas fa-image mr-1"></i>Снимок</a>`
+                : '';
+            return `<div class="bg-gray-900 border border-gray-700 rounded p-4 flex justify-between items-center gap-4">
+                <div>
+                    <div class="font-bold text-red-300">${escapeHtml(event.label)}</div>
+                    <div class="text-xs text-gray-500 mt-1">Уверенность ${confidence}${event.track_id !== null && event.track_id !== undefined ? ` • track ${escapeHtml(event.track_id)}` : ''}</div>
+                </div>
+                <div class="flex items-center gap-4 whitespace-nowrap">
+                    ${snapshot}
+                    <button type="button" data-seek="${Number(event.timestamp_seconds) || 0}" class="seek-event bg-blue-700 hover:bg-blue-600 text-white rounded px-3 py-2 text-sm"><i class="fas fa-play mr-1"></i>${formatTime(event.timestamp_seconds)}</button>
+                </div>
+            </div>`;
+        }).join('');
+        document.querySelectorAll('.seek-event').forEach(button => button.addEventListener('click', () => seekTo(Number(button.dataset.seek))));
+    }
+
+    function seekTo(seconds) {
+        const video = document.getElementById('result-video');
+        if (!video.src) return;
+        video.currentTime = seconds;
+        video.play().catch(() => {});
+        video.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    async function openJob(jobId) {
+        currentJobId = jobId;
+        try {
+            const job = await parseResponse(await fetch(`/api/detection-tests/${jobId}`));
+            renderJob(job);
+            if (job.status === 'queued' || job.status === 'processing') startPolling();
+        } catch (error) {
+            showFormError(error.message);
+        }
+    }
+
+    async function loadHistory() {
+        const container = document.getElementById('history-list');
+        try {
+            const jobs = await parseResponse(await fetch('/api/detection-tests/?limit=10'));
+            if (!jobs.length) {
+                container.textContent = 'Проверок еще нет.';
+                return;
+            }
+            container.innerHTML = jobs.map(job => `<button type="button" data-job-id="${escapeHtml(job.id)}" class="history-job w-full text-left bg-gray-900 hover:bg-gray-700 border border-gray-700 rounded p-3 flex justify-between items-center gap-3">
+                <span class="truncate"><i class="fas ${job.source_type === 'youtube' ? 'fa-link' : 'fa-file-video'} mr-2 text-gray-500"></i>${escapeHtml(job.original_filename || 'YouTube video')}</span>
+                <span class="whitespace-nowrap ${job.status === 'completed' ? 'text-green-400' : job.status === 'failed' ? 'text-red-400' : 'text-blue-400'}">${escapeHtml(statusLabels[job.status] || job.status)} • ${Math.round(job.progress || 0)}%</span>
+            </button>`).join('');
+            document.querySelectorAll('.history-job').forEach(button => button.addEventListener('click', () => openJob(button.dataset.jobId)));
+        } catch (error) {
+            container.textContent = error.message;
+        }
+    }
+
+    document.getElementById('source-youtube').addEventListener('click', () => setSource('youtube'));
+    document.getElementById('source-upload').addEventListener('click', () => setSource('upload'));
+    document.getElementById('start-analysis').addEventListener('click', startAnalysis);
+    document.getElementById('model-key').addEventListener('change', updateModelAvailability);
+    document.getElementById('refresh-history').addEventListener('click', loadHistory);
+    document.getElementById('select-all').addEventListener('click', () => {
+        const checks = [...document.querySelectorAll('.detector-check')];
+        const shouldCheck = checks.some(item => !item.checked);
+        checks.forEach(item => { item.checked = shouldCheck; });
+    });
+
+    loadSystem();
+    loadHistory();
+</script>
+{% endblock %}

@@ -1,24 +1,120 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+import datetime
+import os
+import subprocess
+import threading
+import time
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from libs.camera_streams import camera_rtsp_url, public_camera
+from libs.config import settings
 from libs.database import get_db
 from libs.models import Camera, Event
 from libs.schemas import CameraUpdate, RTSPTestResult, SnapshotRequest, SaveSessionRequest
-import datetime
-import subprocess
-import time
 
 router = APIRouter()
 
+_hls_lock = threading.Lock()
+_hls_processes = {}
+_hls_reaper_started = False
+
+
+def _hls_dir(camera_id: str) -> str:
+    return os.path.join(settings.HLS_OUTPUT_DIR, camera_id)
+
+
+def _hls_url(camera_id: str) -> str:
+    return f"/media/hls/{camera_id}/index.m3u8"
+
+
+def _is_running(proc: subprocess.Popen | None) -> bool:
+    return proc is not None and proc.poll() is None
+
+
+def _terminate_process(proc: subprocess.Popen | None):
+    if not _is_running(proc):
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+def _drop_hls_files(camera_id: str):
+    hls_dir = _hls_dir(camera_id)
+    if not os.path.isdir(hls_dir):
+        return
+    for name in os.listdir(hls_dir):
+        if name.endswith((".m3u8", ".ts")):
+            try:
+                os.remove(os.path.join(hls_dir, name))
+            except OSError:
+                pass
+
+
+def stop_hls_stream(camera_id: str, remove_files: bool = False) -> bool:
+    with _hls_lock:
+        entry = _hls_processes.pop(camera_id, None)
+    if not entry:
+        if remove_files:
+            _drop_hls_files(camera_id)
+        return False
+
+    _terminate_process(entry.get("proc"))
+    if remove_files:
+        _drop_hls_files(camera_id)
+    return True
+
+
+def cleanup_idle_hls_processes(now: float | None = None) -> int:
+    now = now or time.time()
+    to_stop = []
+    with _hls_lock:
+        for camera_id, entry in list(_hls_processes.items()):
+            proc = entry.get("proc")
+            if not _is_running(proc):
+                _hls_processes.pop(camera_id, None)
+                continue
+            if now - entry.get("last_touch", 0) > settings.HLS_IDLE_TIMEOUT_SECONDS:
+                to_stop.append(camera_id)
+
+    stopped = 0
+    for camera_id in to_stop:
+        if stop_hls_stream(camera_id):
+            stopped += 1
+    return stopped
+
+
+def hls_process_count() -> int:
+    cleanup_idle_hls_processes()
+    with _hls_lock:
+        return sum(1 for entry in _hls_processes.values() if _is_running(entry.get("proc")))
+
+
+def start_hls_reaper():
+    global _hls_reaper_started
+    if _hls_reaper_started:
+        return
+    _hls_reaper_started = True
+
+    def _loop():
+        while True:
+            cleanup_idle_hls_processes()
+            time.sleep(15)
+
+    threading.Thread(target=_loop, daemon=True, name="hls-reaper").start()
+
 @router.get("/")
 def get_cameras(db: Session = Depends(get_db)):
-    return db.query(Camera).all()
+    return [public_camera(cam) for cam in db.query(Camera).all()]
 
 @router.get("/{camera_id}")
 def get_camera(camera_id: str, db: Session = Depends(get_db)):
     cam = db.query(Camera).filter(Camera.id == camera_id).first()
     if not cam:
         raise HTTPException(status_code=404, detail="Camera not found")
-    return cam
+    return public_camera(cam)
 
 @router.patch("/{camera_id}")
 def update_camera(camera_id: str, update: CameraUpdate, db: Session = Depends(get_db)):
@@ -48,6 +144,8 @@ def update_camera(camera_id: str, update: CameraUpdate, db: Session = Depends(ge
         cam.detect_passengers = update.detect_passengers
     if update.detect_shoplifting is not None:
         cam.detect_shoplifting = update.detect_shoplifting
+    if update.detect_eating is not None:
+        cam.detect_eating = update.detect_eating
     if update.display_zone is not None:
         cam.display_zone = update.display_zone
         
@@ -67,7 +165,7 @@ def test_rtsp(camera_id: str, db: Session = Depends(get_db)):
         cmd = [
             "ffprobe", "-rtsp_transport", "tcp", "-v", "error",
             "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1",
-            cam.rtsp_url
+            camera_rtsp_url(cam)
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         latency = (time.time() - start_time) * 1000
@@ -96,30 +194,64 @@ def trigger_hls(camera_id: str, db: Session = Depends(get_db)):
     if not cam:
         raise HTTPException(status_code=404, detail="Camera not found")
     
-    # In a perfect world we use a background task to start ffmpeg conversion
-    # for /media/hls/cam_{camera_id}/index.m3u8 if it's not running
-    import os
-    hls_dir = f"data/media/hls/{camera_id}"
+    hls_dir = _hls_dir(camera_id)
     os.makedirs(hls_dir, exist_ok=True)
     m3u8_path = os.path.join(hls_dir, "index.m3u8")
+
+    with _hls_lock:
+        entry = _hls_processes.get(camera_id)
+        proc = entry.get("proc") if entry else None
+        if _is_running(proc):
+            entry["last_touch"] = time.time()
+            return {"status": "running", "hls_url": _hls_url(camera_id)}
+
+        if entry:
+            _hls_processes.pop(camera_id, None)
+
+        _drop_hls_files(camera_id)
     
-    cmd = [
-        "ffmpeg", "-rtsp_transport", "tcp", "-i", cam.rtsp_url,
-        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-        "-c:a", "aac", "-f", "hls", "-hls_time", "2", "-hls_list_size", "6",
-        "-hls_flags", "delete_segments+append_list", m3u8_path
-    ]
+        cmd = [
+            "ffmpeg",
+            "-rtsp_transport", "tcp",
+            "-i", camera_rtsp_url(cam),
+            "-an",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-tune", "zerolatency",
+            "-g", "30",
+            "-sc_threshold", "0",
+            "-force_key_frames", "expr:gte(t,n_forced*2)",
+            "-f", "hls",
+            "-hls_time", "2",
+            "-hls_list_size", "6",
+            "-hls_flags", "delete_segments+omit_endlist",
+            m3u8_path
+        ]
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        _hls_processes[camera_id] = {"proc": proc, "last_touch": time.time()}
     
-    # For MVP, we'll just spawn the subprocess and let it run (not robust, but MVP)
-    # Ideally should be managed by a thread and killed when streams have 0 viewers
-    def run_ffmpeg(command):
-        subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-    import threading
-    t = threading.Thread(target=run_ffmpeg, args=(cmd,))
-    t.start()
-    
-    return {"status": "starting", "hls_url": f"/media/hls/{camera_id}/index.m3u8"}
+    return {"status": "starting", "hls_url": _hls_url(camera_id)}
+
+
+@router.post("/{camera_id}/hls-keepalive")
+def keepalive_hls(camera_id: str):
+    with _hls_lock:
+        entry = _hls_processes.get(camera_id)
+        proc = entry.get("proc") if entry else None
+        if _is_running(proc):
+            entry["last_touch"] = time.time()
+            return {"status": "running", "hls_url": _hls_url(camera_id)}
+    return {"status": "stopped"}
+
+
+@router.post("/{camera_id}/stop-hls")
+def stop_hls(camera_id: str):
+    stopped = stop_hls_stream(camera_id)
+    return {"status": "stopped" if stopped else "not_running"}
 
 @router.delete("/{camera_id}")
 def delete_camera(camera_id: str, db: Session = Depends(get_db)):
@@ -152,7 +284,7 @@ def capture_snapshot(camera_id: str, request: SnapshotRequest, db: Session = Dep
     filepath = os.path.join(dataset_dir, filename)
     
     cmd = [
-        "ffmpeg", "-y", "-rtsp_transport", "tcp", "-i", cam.rtsp_url,
+        "ffmpeg", "-y", "-rtsp_transport", "tcp", "-i", camera_rtsp_url(cam),
         "-vframes", "1", "-q:v", "2", filepath
     ]
     
@@ -194,4 +326,3 @@ def save_session(camera_id: str, request: SaveSessionRequest, db: Session = Depe
         return {"status": "success", "moved_files": moved_count, "final_folder": request.dataset_folder}
     except Exception as e:
         return {"status": "error", "error": f"Failed to save session: {str(e)}"}
-
