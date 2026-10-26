@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://camera-detector.local/schemas/0.1/detection.schema.json",
+  "$defs": {
+    "EventSubject": {
+      "properties": {
+        "track_id": {
+          "title": "Track Id",
+          "type": "integer"
+        },
+        "role": {
+          "$ref": "#/$defs/SubjectRole"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bbox"
+        }
+      },
+      "required": [
+        "track_id",
+        "role"
+      ],
+      "title": "EventSubject",
+      "type": "object"
+    },
+    "ExternalRef": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ExternalSourceKind"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "transaction_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transaction Id"
+        }
+      },
+      "required": [
+        "kind",
+        "source_id",
+        "event_id"
+      ],
+      "title": "ExternalRef",
+      "type": "object"
+    },
+    "ExternalSourceKind": {
+      "const": "pos",
+      "title": "ExternalSourceKind",
+      "type": "string"
+    },
+    "SubjectRole": {
+      "enum": [
+        "actor",
+        "participant",
+        "aggressor",
+        "target",
+        "onlooker"
+      ],
+      "title": "SubjectRole",
+      "type": "string"
+    }
+  },
+  "description": "Сигнал детектора на одном кадре; из них движок собирает события.",
+  "properties": {
+    "detector_id": {
+      "pattern": "^[a-z][a-z0-9_]{1,63}$",
+      "title": "Detector Id",
+      "type": "string"
+    },
+    "camera_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+      "title": "Camera Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "score": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Score",
+      "type": "number"
+    },
+    "incident_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Incident Key"
+    },
+    "bbox": {
+      "anyOf": [
+        {
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            }
+          ],
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Bbox"
+    },
+    "subjects": {
+      "items": {
+        "$ref": "#/$defs/EventSubject"
+      },
+      "title": "Subjects",
+      "type": "array"
+    },
+    "zone_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Zone Id"
+    },
+    "external_refs": {
+      "items": {
+        "$ref": "#/$defs/ExternalRef"
+      },
+      "title": "External Refs",
+      "type": "array"
+    },
+    "attributes": {
+      "title": "Attributes",
+      "type": "object"
+    }
+  },
+  "required": [
+    "detector_id",
+    "camera_id",
+    "timestamp",
+    "label",
+    "score"
+  ],
+  "title": "Detection",
+  "type": "object"
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://camera-detector.local/schemas/0.1/config_issue.schema.json",
+  "$defs": {
+    "IssueCode": {
+      "enum": [
+        "unknown_detector",
+        "version_mismatch",
+        "zone_missing",
+        "unknown_zone",
+        "external_source_missing",
+        "fps_too_low",
+        "person_too_small",
+        "person_size_unknown",
+        "unknown_param",
+        "invalid_param"
+      ],
+      "title": "IssueCode",
+      "type": "string"
+    },
+    "IssueSeverity": {
+      "enum": [
+        "error",
+        "warning"
+      ],
+      "title": "IssueSeverity",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "camera_id": {
+      "title": "Camera Id",
+      "type": "string"
+    },
+    "detector_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Detector Id"
+    },
+    "code": {
+      "$ref": "#/$defs/IssueCode"
+    },
+    "severity": {
+      "$ref": "#/$defs/IssueSeverity"
+    },
+    "field": {
+      "title": "Field",
+      "type": "string"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "details": {
+      "title": "Details",
+      "type": "object"
+    }
+  },
+  "required": [
+    "camera_id",
+    "code",
+    "severity",
+    "field",
+    "message"
+  ],
+  "title": "ConfigIssue",
+  "type": "object"
+}

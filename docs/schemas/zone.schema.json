@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://camera-detector.local/schemas/0.1/zone.schema.json",
+  "$defs": {
+    "ZoneKind": {
+      "enum": [
+        "cash_drawer",
+        "display",
+        "include",
+        "exclude"
+      ],
+      "title": "ZoneKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ZoneKind"
+    },
+    "polygon": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "type": "number"
+          },
+          {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "maxItems": 64,
+      "minItems": 3,
+      "title": "Polygon",
+      "type": "array"
+    },
+    "label": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Label"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "polygon"
+  ],
+  "title": "Zone",
+  "type": "object"
+}

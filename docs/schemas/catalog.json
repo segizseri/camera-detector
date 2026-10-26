@@ -1,0 +1,840 @@
+{
+  "contract_version": "0.1",
+  "detectors": [
+    {
+      "id": "fight",
+      "version": "0.1.0",
+      "title": "Драка",
+      "description": "Обоюдная физическая агрессия двух и более людей: удары, толчки, борьба.",
+      "maturity": "prototype",
+      "event_type": "fight",
+      "legacy_event_type": "fight_suspected",
+      "requirements": {
+        "min_fps": 5.0,
+        "recommended_fps": 5.0,
+        "min_person_height_frac": 0.15,
+        "zones": [],
+        "external_events": [],
+        "operating_envelope": {
+          "camera_views": [
+            "high_angle",
+            "eye_level"
+          ],
+          "max_people_in_view": 15,
+          "min_illumination_lux": null,
+          "notes": [
+            "Модель обучена на последовательностях 5 кадров/с, окно 30 кадров (6 с).",
+            "Плотная толпа и сильные перекрытия людей выходят за пределы envelope."
+          ]
+        }
+      },
+      "components": [
+        "pose",
+        "tracker",
+        "interaction_model"
+      ],
+      "params": [
+        {
+          "name": "threshold",
+          "type": "float",
+          "default": 0.6,
+          "title": "Порог уверенности",
+          "description": "Детекция со score не ниже порога считается активной.",
+          "unit": null,
+          "minimum": 0.05,
+          "maximum": 0.99,
+          "choices": null
+        },
+        {
+          "name": "min_duration_s",
+          "type": "float",
+          "default": 1.5,
+          "title": "Минимальная длительность",
+          "description": "Сколько секунд сигнал должен держаться, прежде чем уйдёт started.",
+          "unit": "s",
+          "minimum": 0.0,
+          "maximum": 120.0,
+          "choices": null
+        },
+        {
+          "name": "end_after_s",
+          "type": "float",
+          "default": 5.0,
+          "title": "Завершение после тишины",
+          "description": "ended уходит, если активных детекций нет дольше этого времени.",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "cooldown_s",
+          "type": "float",
+          "default": 20.0,
+          "title": "Пауза между событиями",
+          "description": "После ended новое событие с тем же ключом инцидента не начнётся раньше.",
+          "unit": "s",
+          "minimum": 0.0,
+          "maximum": 3600.0,
+          "choices": null
+        },
+        {
+          "name": "update_interval_s",
+          "type": "float",
+          "default": 5.0,
+          "title": "Частота updated",
+          "description": "Не чаще одного updated за этот интервал (и сразу при новом участнике).",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "max_duration_s",
+          "type": "float",
+          "default": 600.0,
+          "title": "Максимальная длительность",
+          "description": "Длинный инцидент закрывается с end_reason=max_duration.",
+          "unit": "s",
+          "minimum": 10.0,
+          "maximum": 86400.0,
+          "choices": null
+        },
+        {
+          "name": "min_participants",
+          "type": "int",
+          "default": 2,
+          "title": "Минимум участников",
+          "description": "",
+          "unit": null,
+          "minimum": 2.0,
+          "maximum": 10.0,
+          "choices": null
+        }
+      ],
+      "output_attributes": [
+        {
+          "name": "participants",
+          "type": "integer",
+          "description": "Число участников драки.",
+          "nullable": false
+        },
+        {
+          "name": "intensity",
+          "type": "number",
+          "description": "Средняя оценка агрессии за окно, 0..1.",
+          "nullable": false
+        }
+      ],
+      "license_feature": "detector.fight"
+    },
+    {
+      "id": "bullying",
+      "version": "0.1.0",
+      "title": "Буллинг",
+      "description": "Длительная односторонняя агрессия против одного человека: та же модель взаимодействия, что у драки, плюс правила длительности и окружения.",
+      "maturity": "prototype",
+      "event_type": "bullying",
+      "legacy_event_type": "bullying_suspected",
+      "requirements": {
+        "min_fps": 5.0,
+        "recommended_fps": 5.0,
+        "min_person_height_frac": 0.15,
+        "zones": [],
+        "external_events": [],
+        "operating_envelope": {
+          "camera_views": [
+            "high_angle",
+            "eye_level"
+          ],
+          "max_people_in_view": 15,
+          "min_illumination_lux": null,
+          "notes": [
+            "Модель обучена на последовательностях 5 кадров/с, окно 30 кадров (6 с).",
+            "Плотная толпа и сильные перекрытия людей выходят за пределы envelope."
+          ]
+        }
+      },
+      "components": [
+        "pose",
+        "tracker",
+        "interaction_model"
+      ],
+      "params": [
+        {
+          "name": "threshold",
+          "type": "float",
+          "default": 0.6,
+          "title": "Порог уверенности",
+          "description": "Детекция со score не ниже порога считается активной.",
+          "unit": null,
+          "minimum": 0.05,
+          "maximum": 0.99,
+          "choices": null
+        },
+        {
+          "name": "min_duration_s",
+          "type": "float",
+          "default": 8.0,
+          "title": "Минимальная длительность",
+          "description": "Сколько секунд сигнал должен держаться, прежде чем уйдёт started.",
+          "unit": "s",
+          "minimum": 0.0,
+          "maximum": 120.0,
+          "choices": null
+        },
+        {
+          "name": "end_after_s",
+          "type": "float",
+          "default": 10.0,
+          "title": "Завершение после тишины",
+          "description": "ended уходит, если активных детекций нет дольше этого времени.",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "cooldown_s",
+          "type": "float",
+          "default": 30.0,
+          "title": "Пауза между событиями",
+          "description": "После ended новое событие с тем же ключом инцидента не начнётся раньше.",
+          "unit": "s",
+          "minimum": 0.0,
+          "maximum": 3600.0,
+          "choices": null
+        },
+        {
+          "name": "update_interval_s",
+          "type": "float",
+          "default": 5.0,
+          "title": "Частота updated",
+          "description": "Не чаще одного updated за этот интервал (и сразу при новом участнике).",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "max_duration_s",
+          "type": "float",
+          "default": 600.0,
+          "title": "Максимальная длительность",
+          "description": "Длинный инцидент закрывается с end_reason=max_duration.",
+          "unit": "s",
+          "minimum": 10.0,
+          "maximum": 86400.0,
+          "choices": null
+        },
+        {
+          "name": "one_sided_ratio",
+          "type": "float",
+          "default": 0.7,
+          "title": "Односторонность агрессии",
+          "description": "Доля агрессивных действий со стороны нападающих; отличает буллинг от драки.",
+          "unit": null,
+          "minimum": 0.5,
+          "maximum": 1.0,
+          "choices": null
+        },
+        {
+          "name": "min_aggressors",
+          "type": "int",
+          "default": 1,
+          "title": "Минимум нападающих",
+          "description": "",
+          "unit": null,
+          "minimum": 1.0,
+          "maximum": 10.0,
+          "choices": null
+        },
+        {
+          "name": "max_targets",
+          "type": "int",
+          "default": 1,
+          "title": "Максимум жертв",
+          "description": "",
+          "unit": null,
+          "minimum": 1.0,
+          "maximum": 5.0,
+          "choices": null
+        },
+        {
+          "name": "count_onlookers",
+          "type": "bool",
+          "default": true,
+          "title": "Учитывать зрителей",
+          "description": "Люди рядом без участия (круг зрителей) повышают уверенность.",
+          "unit": null,
+          "minimum": null,
+          "maximum": null,
+          "choices": null
+        }
+      ],
+      "output_attributes": [
+        {
+          "name": "duration_s",
+          "type": "number",
+          "description": "Длительность агрессии, с.",
+          "nullable": false
+        },
+        {
+          "name": "one_sided_ratio",
+          "type": "number",
+          "description": "Фактическая односторонность, 0..1.",
+          "nullable": false
+        },
+        {
+          "name": "onlookers",
+          "type": "integer",
+          "description": "Число зрителей рядом.",
+          "nullable": false
+        }
+      ],
+      "license_feature": "detector.bullying"
+    },
+    {
+      "id": "cash_theft",
+      "version": "0.1.0",
+      "title": "Кража из кассы",
+      "description": "Доступ к денежному ящику без подтверждающего POS-события: рука в зоне ящика вне транзакции, no_sale, открытие ящика при оплате картой.",
+      "maturity": "concept",
+      "event_type": "cash_theft",
+      "legacy_event_type": "theft_suspected",
+      "requirements": {
+        "min_fps": 5.0,
+        "recommended_fps": 5.0,
+        "min_person_height_frac": 0.25,
+        "zones": [
+          {
+            "kind": "cash_drawer",
+            "min_count": 1,
+            "description": "Полигон денежного ящика (бывшая theft_zone)."
+          }
+        ],
+        "external_events": [
+          {
+            "kind": "pos",
+            "required": true,
+            "description": "Поток событий кассы, привязанной к камере."
+          }
+        ],
+        "operating_envelope": {
+          "camera_views": [
+            "overhead",
+            "high_angle"
+          ],
+          "max_people_in_view": null,
+          "min_illumination_lux": null,
+          "notes": [
+            "Ящик и руки кассира видны без перекрытия.",
+            "Часы POS и NVR синхронизированы (NTP), рассинхрон меньше pos_match_window_s."
+          ]
+        }
+      },
+      "components": [
+        "pose",
+        "tracker",
+        "pos_ingest"
+      ],
+      "params": [
+        {
+          "name": "threshold",
+          "type": "float",
+          "default": 0.5,
+          "title": "Порог уверенности",
+          "description": "Детекция со score не ниже порога считается активной.",
+          "unit": null,
+          "minimum": 0.05,
+          "maximum": 0.99,
+          "choices": null
+        },
+        {
+          "name": "min_duration_s",
+          "type": "float",
+          "default": 1.0,
+          "title": "Минимальная длительность",
+          "description": "Сколько секунд сигнал должен держаться, прежде чем уйдёт started.",
+          "unit": "s",
+          "minimum": 0.0,
+          "maximum": 120.0,
+          "choices": null
+        },
+        {
+          "name": "end_after_s",
+          "type": "float",
+          "default": 5.0,
+          "title": "Завершение после тишины",
+          "description": "ended уходит, если активных детекций нет дольше этого времени.",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "cooldown_s",
+          "type": "float",
+          "default": 40.0,
+          "title": "Пауза между событиями",
+          "description": "После ended новое событие с тем же ключом инцидента не начнётся раньше.",
+          "unit": "s",
+          "minimum": 0.0,
+          "maximum": 3600.0,
+          "choices": null
+        },
+        {
+          "name": "update_interval_s",
+          "type": "float",
+          "default": 5.0,
+          "title": "Частота updated",
+          "description": "Не чаще одного updated за этот интервал (и сразу при новом участнике).",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "max_duration_s",
+          "type": "float",
+          "default": 600.0,
+          "title": "Максимальная длительность",
+          "description": "Длинный инцидент закрывается с end_reason=max_duration.",
+          "unit": "s",
+          "minimum": 10.0,
+          "maximum": 86400.0,
+          "choices": null
+        },
+        {
+          "name": "pos_match_window_s",
+          "type": "float",
+          "default": 10.0,
+          "title": "Окно сопоставления с POS",
+          "description": "Доступ к ящику легитимен, если в этом окне есть подходящее POS-событие.",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 120.0,
+          "choices": null
+        },
+        {
+          "name": "alert_on_no_sale",
+          "type": "bool",
+          "default": true,
+          "title": "Тревога при no_sale",
+          "description": "",
+          "unit": null,
+          "minimum": null,
+          "maximum": null,
+          "choices": null
+        },
+        {
+          "name": "alert_on_card_payment",
+          "type": "bool",
+          "default": true,
+          "title": "Тревога при доступе к ящику во время оплаты картой",
+          "description": "",
+          "unit": null,
+          "minimum": null,
+          "maximum": null,
+          "choices": null
+        }
+      ],
+      "output_attributes": [
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "access_without_transaction | no_sale_access | card_payment_access | access_after_void",
+          "nullable": false
+        },
+        {
+          "name": "drawer_zone_id",
+          "type": "string",
+          "description": "Зона ящика.",
+          "nullable": false
+        },
+        {
+          "name": "pos_transaction_id",
+          "type": "string",
+          "description": "Ближайшая транзакция.",
+          "nullable": true
+        },
+        {
+          "name": "operator_id",
+          "type": "string",
+          "description": "Кассир из POS.",
+          "nullable": true
+        },
+        {
+          "name": "seconds_from_pos_event",
+          "type": "number",
+          "description": "Разница во времени с ближайшим POS-событием, с.",
+          "nullable": true
+        }
+      ],
+      "license_feature": "detector.cash_theft"
+    },
+    {
+      "id": "shelf_theft",
+      "version": "0.1.0",
+      "title": "Кража с витрины",
+      "description": "Человек берёт товар в зоне витрины и прячет его в карман, сумку или под одежду.",
+      "maturity": "concept",
+      "event_type": "shelf_theft",
+      "legacy_event_type": "shoplifting_suspected",
+      "requirements": {
+        "min_fps": 5.0,
+        "recommended_fps": 5.0,
+        "min_person_height_frac": 0.2,
+        "zones": [
+          {
+            "kind": "display",
+            "min_count": 1,
+            "description": "Полигон витрины (бывшая display_zone)."
+          }
+        ],
+        "external_events": [],
+        "operating_envelope": {
+          "camera_views": [
+            "high_angle",
+            "eye_level"
+          ],
+          "max_people_in_view": null,
+          "min_illumination_lux": null,
+          "notes": [
+            "Товар в руке различим: от ~24 px по меньшей стороне на входе детектора предметов."
+          ]
+        }
+      },
+      "components": [
+        "pose",
+        "tracker",
+        "object_detector"
+      ],
+      "params": [
+        {
+          "name": "threshold",
+          "type": "float",
+          "default": 0.55,
+          "title": "Порог уверенности",
+          "description": "Детекция со score не ниже порога считается активной.",
+          "unit": null,
+          "minimum": 0.05,
+          "maximum": 0.99,
+          "choices": null
+        },
+        {
+          "name": "min_duration_s",
+          "type": "float",
+          "default": 0.5,
+          "title": "Минимальная длительность",
+          "description": "Сколько секунд сигнал должен держаться, прежде чем уйдёт started.",
+          "unit": "s",
+          "minimum": 0.0,
+          "maximum": 120.0,
+          "choices": null
+        },
+        {
+          "name": "end_after_s",
+          "type": "float",
+          "default": 5.0,
+          "title": "Завершение после тишины",
+          "description": "ended уходит, если активных детекций нет дольше этого времени.",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "cooldown_s",
+          "type": "float",
+          "default": 30.0,
+          "title": "Пауза между событиями",
+          "description": "После ended новое событие с тем же ключом инцидента не начнётся раньше.",
+          "unit": "s",
+          "minimum": 0.0,
+          "maximum": 3600.0,
+          "choices": null
+        },
+        {
+          "name": "update_interval_s",
+          "type": "float",
+          "default": 5.0,
+          "title": "Частота updated",
+          "description": "Не чаще одного updated за этот интервал (и сразу при новом участнике).",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "max_duration_s",
+          "type": "float",
+          "default": 600.0,
+          "title": "Максимальная длительность",
+          "description": "Длинный инцидент закрывается с end_reason=max_duration.",
+          "unit": "s",
+          "minimum": 10.0,
+          "maximum": 86400.0,
+          "choices": null
+        },
+        {
+          "name": "conceal_window_s",
+          "type": "float",
+          "default": 3.0,
+          "title": "Окно «взял → спрятал»",
+          "description": "",
+          "unit": "s",
+          "minimum": 0.5,
+          "maximum": 15.0,
+          "choices": null
+        },
+        {
+          "name": "object_labels",
+          "type": "str_list",
+          "default": [
+            "product"
+          ],
+          "title": "Классы предметов",
+          "description": "",
+          "unit": null,
+          "minimum": null,
+          "maximum": null,
+          "choices": [
+            "product",
+            "food",
+            "drink",
+            "bag"
+          ]
+        },
+        {
+          "name": "min_object_score",
+          "type": "float",
+          "default": 0.35,
+          "title": "Порог детектора предметов",
+          "description": "",
+          "unit": null,
+          "minimum": 0.05,
+          "maximum": 0.99,
+          "choices": null
+        },
+        {
+          "name": "require_object",
+          "type": "bool",
+          "default": true,
+          "title": "Требовать предмет в руке",
+          "description": "False: только по позе, как в текущем прототипе (больше ложных срабатываний).",
+          "unit": null,
+          "minimum": null,
+          "maximum": null,
+          "choices": null
+        }
+      ],
+      "output_attributes": [
+        {
+          "name": "display_zone_id",
+          "type": "string",
+          "description": "Зона витрины.",
+          "nullable": false
+        },
+        {
+          "name": "object_label",
+          "type": "string",
+          "description": "Класс взятого предмета.",
+          "nullable": true
+        },
+        {
+          "name": "conceal_location",
+          "type": "string",
+          "description": "pocket | bag | clothing | unknown",
+          "nullable": false
+        },
+        {
+          "name": "grab_to_conceal_s",
+          "type": "number",
+          "description": "Время от захвата до сокрытия, с.",
+          "nullable": false
+        }
+      ],
+      "license_feature": "detector.shelf_theft"
+    },
+    {
+      "id": "eating",
+      "version": "0.1.0",
+      "title": "Поедание у витрины",
+      "description": "Человек ест или пьёт товар у витрины: предмет из зоны витрины многократно у рта.",
+      "maturity": "concept",
+      "event_type": "eating",
+      "legacy_event_type": "eating_suspected",
+      "requirements": {
+        "min_fps": 5.0,
+        "recommended_fps": 5.0,
+        "min_person_height_frac": 0.2,
+        "zones": [
+          {
+            "kind": "display",
+            "min_count": 1,
+            "description": "Полигон витрины (бывшая display_zone)."
+          }
+        ],
+        "external_events": [],
+        "operating_envelope": {
+          "camera_views": [
+            "high_angle",
+            "eye_level"
+          ],
+          "max_people_in_view": null,
+          "min_illumination_lux": null,
+          "notes": [
+            "Лицо и кисти видны; камера сзади человека вне envelope."
+          ]
+        }
+      },
+      "components": [
+        "pose",
+        "tracker",
+        "object_detector"
+      ],
+      "params": [
+        {
+          "name": "threshold",
+          "type": "float",
+          "default": 0.55,
+          "title": "Порог уверенности",
+          "description": "Детекция со score не ниже порога считается активной.",
+          "unit": null,
+          "minimum": 0.05,
+          "maximum": 0.99,
+          "choices": null
+        },
+        {
+          "name": "min_duration_s",
+          "type": "float",
+          "default": 1.0,
+          "title": "Минимальная длительность",
+          "description": "Сколько секунд сигнал должен держаться, прежде чем уйдёт started.",
+          "unit": "s",
+          "minimum": 0.0,
+          "maximum": 120.0,
+          "choices": null
+        },
+        {
+          "name": "end_after_s",
+          "type": "float",
+          "default": 10.0,
+          "title": "Завершение после тишины",
+          "description": "ended уходит, если активных детекций нет дольше этого времени.",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "cooldown_s",
+          "type": "float",
+          "default": 30.0,
+          "title": "Пауза между событиями",
+          "description": "После ended новое событие с тем же ключом инцидента не начнётся раньше.",
+          "unit": "s",
+          "minimum": 0.0,
+          "maximum": 3600.0,
+          "choices": null
+        },
+        {
+          "name": "update_interval_s",
+          "type": "float",
+          "default": 5.0,
+          "title": "Частота updated",
+          "description": "Не чаще одного updated за этот интервал (и сразу при новом участнике).",
+          "unit": "s",
+          "minimum": 1.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "max_duration_s",
+          "type": "float",
+          "default": 600.0,
+          "title": "Максимальная длительность",
+          "description": "Длинный инцидент закрывается с end_reason=max_duration.",
+          "unit": "s",
+          "minimum": 10.0,
+          "maximum": 86400.0,
+          "choices": null
+        },
+        {
+          "name": "object_labels",
+          "type": "str_list",
+          "default": [
+            "food",
+            "drink"
+          ],
+          "title": "Классы предметов",
+          "description": "",
+          "unit": null,
+          "minimum": null,
+          "maximum": null,
+          "choices": [
+            "product",
+            "food",
+            "drink",
+            "bag"
+          ]
+        },
+        {
+          "name": "hand_to_mouth_min",
+          "type": "int",
+          "default": 2,
+          "title": "Минимум подносов ко рту",
+          "description": "",
+          "unit": null,
+          "minimum": 1.0,
+          "maximum": 20.0,
+          "choices": null
+        },
+        {
+          "name": "window_s",
+          "type": "float",
+          "default": 30.0,
+          "title": "Окно подсчёта",
+          "description": "",
+          "unit": "s",
+          "minimum": 5.0,
+          "maximum": 300.0,
+          "choices": null
+        },
+        {
+          "name": "require_object",
+          "type": "bool",
+          "default": true,
+          "title": "Требовать еду или напиток в руке",
+          "description": "",
+          "unit": null,
+          "minimum": null,
+          "maximum": null,
+          "choices": null
+        }
+      ],
+      "output_attributes": [
+        {
+          "name": "display_zone_id",
+          "type": "string",
+          "description": "Зона витрины.",
+          "nullable": false
+        },
+        {
+          "name": "object_label",
+          "type": "string",
+          "description": "food | drink | product",
+          "nullable": true
+        },
+        {
+          "name": "hand_to_mouth_count",
+          "type": "integer",
+          "description": "Сколько раз предмет был у рта.",
+          "nullable": false
+        }
+      ],
+      "license_feature": "detector.eating"
+    }
+  ]
+}

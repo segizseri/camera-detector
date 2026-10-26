@@ -1,0 +1,16 @@
+{
+  "camera_id": "store-12-hall-1",
+  "fps": 5,
+  "scene": {"typical_person_height_frac": 0.3, "camera_view": "high_angle"},
+  "zones": [
+    {"id": "display", "kind": "display", "label": "Витрина с напитками",
+     "polygon": [[0.05, 0.20], [0.48, 0.18], [0.50, 0.70], [0.04, 0.74]]},
+    {"id": "tv", "kind": "exclude", "label": "Рекламный экран",
+     "polygon": [[0.80, 0.05], [0.95, 0.05], [0.95, 0.25], [0.80, 0.25]]}
+  ],
+  "detectors": {
+    "shelf_theft": {"zone_ids": ["display"], "params": {"conceal_window_s": 4.0}},
+    "eating": {"params": {"object_labels": ["drink"], "hand_to_mouth_min": 3}},
+    "bullying": {"enabled": false}
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1",
+  "event_id": "5f0c2b8e-7d4a-4b8e-9a51-3c2f1e0d9a77",
+  "seq": 0,
+  "phase": "started",
+  "detector_id": "fight",
+  "detector_version": "0.1.0",
+  "event_type": "fight",
+  "camera_id": "store-12-hall-1",
+  "started_at": "2026-10-26T14:03:11.200Z",
+  "updated_at": "2026-10-26T14:03:11.200Z",
+  "confidence": 0.71,
+  "peak_confidence": 0.71,
+  "subjects": [
+    {"track_id": 14, "role": "participant", "bbox": [0.31, 0.22, 0.44, 0.83]},
+    {"track_id": 17, "role": "participant", "bbox": [0.40, 0.25, 0.55, 0.86]}
+  ],
+  "media": {"snapshot_url": "/v1/media/5f0c2b8e-7d4a-4b8e-9a51-3c2f1e0d9a77/snapshot.jpg"},
+  "attributes": {"participants": 2, "intensity": 0.68},
+  "labels": {"store": "12"}
+}

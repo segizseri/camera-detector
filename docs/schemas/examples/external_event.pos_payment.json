@@ -1,0 +1,12 @@
+{
+  "kind": "pos",
+  "source_id": "store-12/register-3",
+  "event_id": "r3-000982-pay",
+  "type": "payment",
+  "occurred_at": "2026-10-20T09:21:05Z",
+  "transaction_id": "T-2026-10-20-000982",
+  "operator_id": "cashier-07",
+  "amount_minor": 1250000,
+  "currency": "KZT",
+  "payment_method": "card"
+}

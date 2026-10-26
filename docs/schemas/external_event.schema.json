@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://camera-detector.local/schemas/0.1/external_event.schema.json",
+  "$defs": {
+    "ExternalSourceKind": {
+      "const": "pos",
+      "title": "ExternalSourceKind",
+      "type": "string"
+    },
+    "PosEventType": {
+      "enum": [
+        "transaction_started",
+        "item_scanned",
+        "payment",
+        "transaction_completed",
+        "transaction_voided",
+        "refund",
+        "no_sale",
+        "drawer_opened",
+        "drawer_closed"
+      ],
+      "title": "PosEventType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Событие внешней системы (сейчас только POS), POST /v1/external-events.",
+  "properties": {
+    "schema_version": {
+      "default": "0.1",
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ExternalSourceKind"
+    },
+    "source_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+      "title": "Source Id",
+      "type": "string"
+    },
+    "event_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "type": {
+      "$ref": "#/$defs/PosEventType"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "transaction_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Transaction Id"
+    },
+    "operator_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operator Id"
+    },
+    "amount_minor": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Amount Minor"
+    },
+    "currency": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Currency"
+    },
+    "payment_method": {
+      "anyOf": [
+        {
+          "enum": [
+            "cash",
+            "card",
+            "mixed",
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Payment Method"
+    },
+    "attributes": {
+      "title": "Attributes",
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "source_id",
+    "event_id",
+    "type",
+    "occurred_at"
+  ],
+  "title": "ExternalEvent",
+  "type": "object"
+}

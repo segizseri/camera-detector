@@ -1,0 +1,17 @@
+{
+  "camera_id": "store-12-checkout-3",
+  "enabled": true,
+  "source": {"url": "rtsp://10.0.12.20:554/Streaming/Channels/301", "transport": "tcp"},
+  "fps": 5,
+  "scene": {"frame_width": 1920, "frame_height": 1080, "typical_person_height_frac": 0.45, "camera_view": "overhead"},
+  "zones": [
+    {"id": "cash_drawer", "kind": "cash_drawer", "label": "Ящик кассы 3",
+     "polygon": [[0.41, 0.62], [0.58, 0.62], [0.58, 0.81], [0.41, 0.81]]}
+  ],
+  "external_sources": {"pos": ["store-12/register-3"]},
+  "detectors": {
+    "cash_theft": {"params": {"pos_match_window_s": 15, "alert_on_card_payment": true}},
+    "fight": {"enabled": true, "version": "0.1"}
+  },
+  "labels": {"store": "12", "city": "Алматы"}
+}

@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://camera-detector.local/schemas/0.1/event.schema.json",
+  "$defs": {
+    "EndReason": {
+      "enum": [
+        "inactive",
+        "max_duration",
+        "camera_stopped",
+        "detector_disabled",
+        "config_changed",
+        "stream_end",
+        "engine_restart"
+      ],
+      "title": "EndReason",
+      "type": "string"
+    },
+    "EventMedia": {
+      "properties": {
+        "snapshot_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snapshot Url"
+        },
+        "clip_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clip Url"
+        }
+      },
+      "title": "EventMedia",
+      "type": "object"
+    },
+    "EventPhase": {
+      "enum": [
+        "started",
+        "updated",
+        "ended"
+      ],
+      "title": "EventPhase",
+      "type": "string"
+    },
+    "EventSubject": {
+      "properties": {
+        "track_id": {
+          "title": "Track Id",
+          "type": "integer"
+        },
+        "role": {
+          "$ref": "#/$defs/SubjectRole"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bbox"
+        }
+      },
+      "required": [
+        "track_id",
+        "role"
+      ],
+      "title": "EventSubject",
+      "type": "object"
+    },
+    "ExternalRef": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ExternalSourceKind"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "transaction_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transaction Id"
+        }
+      },
+      "required": [
+        "kind",
+        "source_id",
+        "event_id"
+      ],
+      "title": "ExternalRef",
+      "type": "object"
+    },
+    "ExternalSourceKind": {
+      "const": "pos",
+      "title": "ExternalSourceKind",
+      "type": "string"
+    },
+    "SubjectRole": {
+      "enum": [
+        "actor",
+        "participant",
+        "aggressor",
+        "target",
+        "onlooker"
+      ],
+      "title": "SubjectRole",
+      "type": "string"
+    }
+  },
+  "description": "Событие с жизненным циклом started → updated* → ended.\n\nВсе сообщения одного инцидента имеют общий event_id; seq растёт на 1\nс каждым сообщением, started имеет seq=0.",
+  "properties": {
+    "schema_version": {
+      "default": "0.1",
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "event_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "seq": {
+      "minimum": 0,
+      "title": "Seq",
+      "type": "integer"
+    },
+    "phase": {
+      "$ref": "#/$defs/EventPhase"
+    },
+    "detector_id": {
+      "pattern": "^[a-z][a-z0-9_]{1,63}$",
+      "title": "Detector Id",
+      "type": "string"
+    },
+    "detector_version": {
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$",
+      "title": "Detector Version",
+      "type": "string"
+    },
+    "event_type": {
+      "pattern": "^[a-z][a-z0-9_]{1,63}$",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "camera_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+      "title": "Camera Id",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    },
+    "ended_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ended At"
+    },
+    "end_reason": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EndReason"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "confidence": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "peak_confidence": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Peak Confidence",
+      "type": "number"
+    },
+    "subjects": {
+      "items": {
+        "$ref": "#/$defs/EventSubject"
+      },
+      "title": "Subjects",
+      "type": "array"
+    },
+    "zone_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+        "type": "string"
+      },
+      "title": "Zone Ids",
+      "type": "array"
+    },
+    "external_refs": {
+      "items": {
+        "$ref": "#/$defs/ExternalRef"
+      },
+      "title": "External Refs",
+      "type": "array"
+    },
+    "media": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventMedia"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "attributes": {
+      "title": "Attributes",
+      "type": "object"
+    },
+    "labels": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Labels",
+      "type": "object"
+    },
+    "source": {
+      "default": "live",
+      "enum": [
+        "live",
+        "batch"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "start_offset_s": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Start Offset S"
+    },
+    "end_offset_s": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "End Offset S"
+    }
+  },
+  "required": [
+    "event_id",
+    "seq",
+    "phase",
+    "detector_id",
+    "detector_version",
+    "event_type",
+    "camera_id",
+    "started_at",
+    "updated_at",
+    "confidence",
+    "peak_confidence"
+  ],
+  "title": "Event",
+  "type": "object"
+}

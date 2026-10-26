@@ -1,0 +1,447 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://camera-detector.local/schemas/0.1/detector_catalog.schema.json",
+  "$defs": {
+    "ComponentId": {
+      "description": "Общие компоненты, которые движок загружает лениво и делит между детекторами.",
+      "enum": [
+        "pose",
+        "tracker",
+        "interaction_model",
+        "object_detector",
+        "pos_ingest"
+      ],
+      "title": "ComponentId",
+      "type": "string"
+    },
+    "DetectorInfo": {
+      "description": "Элемент каталога GET /detectors.",
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{1,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "maturity": {
+          "$ref": "#/$defs/Maturity"
+        },
+        "event_type": {
+          "pattern": "^[a-z][a-z0-9_]{1,63}$",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "legacy_event_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Legacy Event Type"
+        },
+        "requirements": {
+          "$ref": "#/$defs/Requirements"
+        },
+        "components": {
+          "items": {
+            "$ref": "#/$defs/ComponentId"
+          },
+          "title": "Components",
+          "type": "array"
+        },
+        "params": {
+          "items": {
+            "$ref": "#/$defs/ParamSpec"
+          },
+          "title": "Params",
+          "type": "array"
+        },
+        "output_attributes": {
+          "items": {
+            "$ref": "#/$defs/OutputField"
+          },
+          "title": "Output Attributes",
+          "type": "array"
+        },
+        "license_feature": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License Feature"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "title",
+        "description",
+        "maturity",
+        "event_type",
+        "requirements",
+        "components"
+      ],
+      "title": "DetectorInfo",
+      "type": "object"
+    },
+    "ExternalEventRequirement": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ExternalSourceKind"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ExternalEventRequirement",
+      "type": "object"
+    },
+    "ExternalSourceKind": {
+      "const": "pos",
+      "title": "ExternalSourceKind",
+      "type": "string"
+    },
+    "Maturity": {
+      "enum": [
+        "concept",
+        "prototype",
+        "beta",
+        "stable"
+      ],
+      "title": "Maturity",
+      "type": "string"
+    },
+    "OperatingEnvelope": {
+      "description": "Условия, в которых качество детектора измерялось и гарантируется.",
+      "properties": {
+        "camera_views": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Camera Views",
+          "type": "array"
+        },
+        "max_people_in_view": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max People In View"
+        },
+        "min_illumination_lux": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Illumination Lux"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "title": "OperatingEnvelope",
+      "type": "object"
+    },
+    "OutputField": {
+      "description": "Поле Event.attributes, которое детектор заполняет.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "integer",
+            "number",
+            "boolean",
+            "string",
+            "array"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "nullable": {
+          "default": false,
+          "title": "Nullable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "description"
+      ],
+      "title": "OutputField",
+      "type": "object"
+    },
+    "ParamSpec": {
+      "description": "Описание параметра детектора: по нему внешняя система строит форму настройки.",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/ParamType"
+        },
+        "default": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Default"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        },
+        "choices": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Choices"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "default",
+        "title"
+      ],
+      "title": "ParamSpec",
+      "type": "object"
+    },
+    "ParamType": {
+      "enum": [
+        "float",
+        "int",
+        "bool",
+        "enum",
+        "str",
+        "str_list"
+      ],
+      "title": "ParamType",
+      "type": "string"
+    },
+    "Requirements": {
+      "description": "Обязательные входы детектора; проверяются при включении на камере.",
+      "properties": {
+        "min_fps": {
+          "exclusiveMinimum": 0.0,
+          "title": "Min Fps",
+          "type": "number"
+        },
+        "recommended_fps": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Fps"
+        },
+        "min_person_height_frac": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Min Person Height Frac",
+          "type": "number"
+        },
+        "zones": {
+          "items": {
+            "$ref": "#/$defs/ZoneRequirement"
+          },
+          "title": "Zones",
+          "type": "array"
+        },
+        "external_events": {
+          "items": {
+            "$ref": "#/$defs/ExternalEventRequirement"
+          },
+          "title": "External Events",
+          "type": "array"
+        },
+        "operating_envelope": {
+          "$ref": "#/$defs/OperatingEnvelope"
+        }
+      },
+      "required": [
+        "min_fps"
+      ],
+      "title": "Requirements",
+      "type": "object"
+    },
+    "ZoneKind": {
+      "enum": [
+        "cash_drawer",
+        "display",
+        "include",
+        "exclude"
+      ],
+      "title": "ZoneKind",
+      "type": "string"
+    },
+    "ZoneRequirement": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ZoneKind"
+        },
+        "min_count": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Min Count",
+          "type": "integer"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ZoneRequirement",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "contract_version": {
+      "default": "0.1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "detectors": {
+      "items": {
+        "$ref": "#/$defs/DetectorInfo"
+      },
+      "title": "Detectors",
+      "type": "array"
+    }
+  },
+  "required": [
+    "detectors"
+  ],
+  "title": "DetectorCatalog",
+  "type": "object"
+}
