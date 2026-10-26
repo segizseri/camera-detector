@@ -40,8 +40,16 @@
     <meta name="color-scheme" content="dark light">
     <title>{% block title %}AI Box{% endblock %} · AI Box</title>
     <script>
-        // Тема до первой отрисовки, чтобы не мигал светлый фон. По умолчанию тёмная.
         (function () {
+            // Вход по адресу вида http://user:pass@host/ оставляет логин в базовом адресе документа:
+            // fetch('/api/…') тогда падает, а браузер блокирует картинки и видео. <base> без учётных
+            // данных возвращает нормальное разрешение относительных адресов.
+            if (/^[a-z]+:\/\/[^\/]*@/i.test(document.baseURI)) {
+                var base = document.createElement('base');
+                base.href = location.origin + location.pathname + location.search;
+                document.head.appendChild(base);
+            }
+            // Тема до первой отрисовки, чтобы не мигал светлый фон. По умолчанию тёмная.
             try {
                 if (localStorage.getItem('ui.theme') === 'light') document.documentElement.dataset.theme = 'light';
             } catch (e) { /* хранилище недоступно */ }

@@ -74,7 +74,11 @@
             const next = new URLSearchParams();
             Object.entries(fields).forEach(([key, el]) => { if (el.value) next.set(key, el.value); });
             if (severity !== 'all') next.set('sev', severity);
-            history.replaceState(null, '', `${location.pathname}${next.toString() ? `?${next}` : ''}`);
+            try {
+                history.replaceState(null, '', `${location.pathname}${next.toString() ? `?${next}` : ''}`);
+            } catch (_) {
+                // После входа по адресу с логином браузер запрещает менять адрес: фильтры работают без него.
+            }
         }
 
         function setSeverity(value, render = true) {
