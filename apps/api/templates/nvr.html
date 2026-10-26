@@ -12,6 +12,16 @@
     <li class="step" data-step="3"><span class="step-dot">3</span>Импорт</li>
 </ol>
 
+<section class="card mb-4" id="connected-card" aria-labelledby="connected-title" hidden>
+    <div class="card-header">
+        <div>
+            <h2 class="card-title" id="connected-title">{{ icon("server", "icon-sm text-subtle") }}Подключённые регистраторы</h2>
+            <p class="card-subtitle">Импортированные камеры сервер держит на связи сам, вход в панель для этого не нужен.</p>
+        </div>
+    </div>
+    <ul id="connected-list" class="divide-y divide-line"></ul>
+</section>
+
 <div class="grid grid-cols-1 xl:grid-cols-5 gap-4 items-start">
     <form id="nvr-form" class="card xl:col-span-2" autocomplete="off" novalidate>
         <div class="card-header">
@@ -40,7 +50,7 @@
                         <input type="password" id="password" name="password" class="input" required autocomplete="current-password">
                     </div>
                 </div>
-                <p class="hint flex items-start gap-1.5">{{ icon("info", "icon-xs mt-0.5") }}Пароль хранится на сервере в зашифрованном виде и не возвращается в интерфейс.</p>
+                <p class="hint flex items-start gap-1.5">{{ icon("info", "icon-xs mt-0.5") }}Параметры регистратора запоминаются на сервере. Пароль сохраняется только в импортированных камерах, в зашифрованном виде, и в форму не возвращается.</p>
             </fieldset>
 
             <hr class="divider">
@@ -116,6 +126,101 @@
         const statusBox = document.getElementById('status-msg');
         let lastConfig = null;
         let channels = [];
+        let cameras = [];
+
+        // Поля формы → ключи глобальных настроек. Пароль сюда не входит.
+        const SETTING_KEYS = {
+            nvr_ip: 'nvr_ip',
+            nvr_rtsp_port: 'nvr_rtsp_port',
+            username: 'nvr_username',
+            channels_count: 'nvr_channels_count',
+            brand_preset: 'nvr_brand_preset',
+            stream_profile: 'nvr_stream_profile',
+            rtsp_transport: 'nvr_rtsp_transport',
+        };
+        const BRANDS = { hikvision: 'Hikvision', generic: 'Dahua и совместимые' };
+
+        async function saveNvrSettings(data) {
+            const settings = Object.fromEntries(Object.entries(SETTING_KEYS).map(([field, key]) => [key, String(data[field] ?? '')]));
+            try {
+                await api('/api/settings/update', { method: 'POST', json: { settings } });
+            } catch (error) {
+                UI.toast(error.message, { type: 'warning', title: 'Параметры регистратора не сохранились' });
+            }
+        }
+
+        // Порт, производитель и профиль по адресу уже импортированной камеры.
+        function parseRtsp(url) {
+            try {
+                const u = new URL(String(url).replace(/^rtsp:/i, 'http:'));
+                const info = { port: u.port || '554', brand: null, profile: null };
+                if (/^\/Streaming\/Channels\//i.test(u.pathname)) {
+                    info.brand = 'hikvision';
+                    info.profile = u.pathname.endsWith('02') ? 'substream' : 'mainstream';
+                } else if (u.pathname.startsWith('/cam/realmonitor')) {
+                    info.brand = 'generic';
+                    info.profile = u.searchParams.get('subtype') === '1' ? 'substream' : 'mainstream';
+                }
+                return info;
+            } catch (_) {
+                return { port: '554', brand: null, profile: null };
+            }
+        }
+
+        function renderConnected() {
+            const groups = new Map();
+            cameras.filter((c) => c.nvr_ip).forEach((c) => {
+                if (!groups.has(c.nvr_ip)) groups.set(c.nvr_ip, []);
+                groups.get(c.nvr_ip).push(c);
+            });
+            document.getElementById('connected-card').hidden = groups.size === 0;
+            document.getElementById('connected-list').innerHTML = [...groups.entries()].map(([ip, cams]) => {
+                const info = parseRtsp(cams[0].rtsp_url);
+                const online = cams.filter((c) => c.status === 'online').length;
+                const users = [...new Set(cams.map((c) => c.username).filter(Boolean))].join(', ') || '—';
+                return `<li class="flex flex-wrap items-center gap-3 px-5 py-3">
+                    <span class="detector-icon text-primary-text">${icon('server', 'icon-sm')}</span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block mono font-semibold text-fg">${escapeHtml(ip)}:${escapeHtml(info.port)}</span>
+                        <span class="block text-xs text-subtle">пользователь ${escapeHtml(users)}${info.brand ? ` · ${BRANDS[info.brand]}` : ''}</span>
+                    </span>
+                    <span class="badge ${online ? 'badge-success' : 'badge-system'}"><span class="dot"></span>${online} из ${cams.length} онлайн</span>
+                    <button type="button" class="btn btn-secondary btn-sm" data-fill="${escapeHtml(ip)}">${icon('pencil', 'icon-sm')}Подставить в форму</button>
+                    <a href="/cameras" class="btn btn-ghost btn-sm">${icon('video', 'icon-sm')}Камеры</a>
+                </li>`;
+            }).join('');
+        }
+
+        document.getElementById('connected-list').addEventListener('click', (event) => {
+            const button = event.target.closest('[data-fill]');
+            if (!button) return;
+            const cam = cameras.find((c) => c.nvr_ip === button.dataset.fill);
+            const info = parseRtsp(cam.rtsp_url);
+            form.elements.nvr_ip.value = cam.nvr_ip;
+            form.elements.nvr_rtsp_port.value = info.port;
+            if (cam.username) form.elements.username.value = cam.username;
+            if (info.brand) form.elements.brand_preset.value = info.brand;
+            if (info.profile) form.elements.stream_profile.value = info.profile;
+            form.elements.password.value = '';
+            form.elements.password.focus();
+            showStatus('info-static', 'Параметры подставлены', 'Введите пароль регистратора, чтобы проверить подключение или найти новые каналы.');
+        });
+
+        async function loadSaved() {
+            const [settings, cams] = await Promise.all([api('/api/settings/').catch(() => ({})), UI.cameras().catch(() => [])]);
+            cameras = cams;
+            renderConnected();
+            let restored = false;
+            Object.entries(SETTING_KEYS).forEach(([field, key]) => {
+                if (settings[key]) {
+                    form.elements[field].value = settings[key];
+                    restored = true;
+                }
+            });
+            if (restored) {
+                showStatus('info-static', 'Параметры регистратора восстановлены', 'Пароль не сохраняется: введите его, чтобы проверить подключение или найти каналы.');
+            }
+        }
 
         function setStep(step, failed) {
             document.querySelectorAll('[data-step]').forEach((el) => {
@@ -130,8 +235,10 @@
 
         function showStatus(type, title, text) {
             text = maskCredentials(text);
-            const icons = { success: 'check-circle', danger: 'alert-circle', info: 'info', warning: 'alert-triangle' };
-            statusBox.innerHTML = `<div class="alert alert-${type}">${type === 'info' ? '<span class="spinner text-info-fg" aria-hidden="true"></span>' : icon(icons[type])}<div><div class="alert-title">${escapeHtml(title)}</div>${text ? `<p class="text-muted break-words">${escapeHtml(text)}</p>` : ''}</div></div>`;
+            const icons = { success: 'check-circle', danger: 'alert-circle', 'info-static': 'info', warning: 'alert-triangle' };
+            const cls = type === 'info-static' ? 'info' : type;
+            const lead = type === 'info' ? '<span class="spinner text-info-fg" aria-hidden="true"></span>' : icon(icons[type]);
+            statusBox.innerHTML = `<div class="alert alert-${cls}">${lead}<div><div class="alert-title">${escapeHtml(title)}</div>${text ? `<p class="text-muted break-words">${escapeHtml(text)}</p>` : ''}</div></div>`;
         }
 
         function readForm() {
@@ -163,8 +270,9 @@
             try {
                 const out = await api('/api/nvr/test-connection', { method: 'POST', json: data });
                 if (out.status === 'success') {
-                    showStatus('success', 'Регистратор отвечает', 'Можно искать каналы.');
+                    showStatus('success', 'Регистратор отвечает', 'Параметры сохранены. Можно искать каналы.');
                     setStep(2);
+                    saveNvrSettings(data);
                 } else {
                     showStatus('danger', 'Не удалось подключиться', out.message);
                     setStep(1, true);
@@ -177,15 +285,17 @@
         });
 
         function updateSelection() {
-            const checked = [...document.querySelectorAll('.ch-checkbox:checked')];
+            const selectable = [...document.querySelectorAll('.ch-checkbox:not(:disabled)')];
+            const checked = selectable.filter((cb) => cb.checked);
             const all = document.getElementById('select-all');
             if (all) {
-                all.checked = checked.length === channels.length && channels.length > 0;
-                all.indeterminate = checked.length > 0 && checked.length < channels.length;
+                all.disabled = selectable.length === 0;
+                all.checked = checked.length === selectable.length && selectable.length > 0;
+                all.indeterminate = checked.length > 0 && checked.length < selectable.length;
             }
             const badge = document.getElementById('selected-count');
             badge.hidden = !channels.length;
-            badge.textContent = `Выбрано ${checked.length} из ${channels.length}`;
+            badge.textContent = `Выбрано ${checked.length} из ${selectable.length}`;
             const importButton = document.getElementById('btn-import-selected');
             importButton.disabled = checked.length === 0;
             importButton.innerHTML = `${icon('download', 'icon-sm')}Импортировать ${checked.length ? checked.length : ''} ${UI.plural(checked.length, ['камеру', 'камеры', 'камер'])}`;
@@ -199,13 +309,17 @@
                     <th scope="col" class="w-10"><input type="checkbox" class="checkbox" id="select-all" aria-label="Выбрать все каналы"></th>
                     <th scope="col">Канал</th><th scope="col">Статус</th><th scope="col">Кодек</th><th scope="col">RTSP</th>
                 </tr></thead>
-                <tbody>${channels.map((ch) => `<tr>
-                    <td><input type="checkbox" class="checkbox ch-checkbox" value="${ch.channel}" id="ch-${ch.channel}" ${ch.status === 'online' ? 'checked' : ''}></td>
-                    <td><label for="ch-${ch.channel}" class="font-semibold text-fg cursor-pointer">Канал ${ch.channel}</label></td>
-                    <td>${ch.status === 'online' ? '<span class="badge badge-success"><span class="dot"></span>Онлайн</span>' : '<span class="badge badge-system"><span class="dot"></span>Нет сигнала</span>'}</td>
+                <tbody>${channels.map((ch) => {
+                    const existing = cameras.find((c) => c.rtsp_url === ch.rtsp_url);
+                    return `<tr>
+                    <td><input type="checkbox" class="checkbox ch-checkbox" value="${ch.channel}" id="ch-${ch.channel}" ${existing ? 'disabled title="Канал уже импортирован"' : ch.status === 'online' ? 'checked' : ''}></td>
+                    <td><label for="ch-${ch.channel}" class="font-semibold text-fg ${existing ? '' : 'cursor-pointer'}">Канал ${ch.channel}</label></td>
+                    <td class="whitespace-nowrap">${ch.status === 'online' ? '<span class="badge badge-success"><span class="dot"></span>Онлайн</span>' : '<span class="badge badge-system"><span class="dot"></span>Нет сигнала</span>'}
+                        ${existing ? `<a href="/cameras/${encodeURIComponent(existing.id)}" class="badge badge-primary ml-1" title="Открыть камеру «${escapeHtml(existing.name)}»">${icon('check', 'icon-xs')}Уже добавлен</a>` : ''}</td>
                     <td class="mono text-muted">${escapeHtml(ch.codec || '—')}</td>
                     <td class="mono text-subtle max-w-xs truncate" title="${escapeHtml(ch.rtsp_url)}">${escapeHtml(ch.rtsp_url)}</td>
-                </tr>`).join('')}</tbody></table></div>`;
+                </tr>`;
+                }).join('')}</tbody></table></div>`;
             document.getElementById('results-footer').hidden = false;
             updateSelection();
         }
@@ -220,12 +334,24 @@
             showStatus('info', `Проверяем ${data.channels_count} ${UI.plural(data.channels_count, ['канал', 'канала', 'каналов'])}…`, 'Это может занять до минуты.');
             document.getElementById('results-body').innerHTML = `<div class="p-5 space-y-3" aria-hidden="true">${'<div class="skeleton h-9"></div>'.repeat(5)}</div>`;
             try {
-                const out = await api('/api/nvr/discover', { method: 'POST', json: data });
+                const [out, cams] = await Promise.all([
+                    api('/api/nvr/discover', { method: 'POST', json: data }),
+                    UI.cameras({ refresh: true }).catch(() => cameras),
+                ]);
+                cameras = cams;
                 channels = out.channels || [];
                 renderChannels();
-                const online = channels.filter((c) => c.status === 'online').length;
-                showStatus(online ? 'success' : 'warning', online ? 'Поиск завершён' : 'Активных каналов не найдено', online ? 'Отметьте камеры для импорта.' : 'Проверьте учётные данные, профиль потока и производителя.');
-                setStep(online ? 3 : 2, !online);
+                saveNvrSettings(data);
+                const online = channels.filter((c) => c.status === 'online');
+                const fresh = online.filter((ch) => !cameras.some((c) => c.rtsp_url === ch.rtsp_url));
+                if (!online.length) {
+                    showStatus('warning', 'Активных каналов не найдено', 'Проверьте учётные данные, профиль потока и производителя.');
+                } else if (!fresh.length) {
+                    showStatus('success', 'Поиск завершён', 'Все активные каналы уже импортированы, новых нет.');
+                } else {
+                    showStatus('success', 'Поиск завершён', `Новых активных каналов: ${fresh.length}. Отметьте камеры для импорта.`);
+                }
+                setStep(online.length ? 3 : 2, !online.length);
             } catch (error) {
                 showStatus('danger', 'Ошибка поиска', error.message);
                 document.getElementById('results-body').innerHTML = UI.emptyState({ iconName: 'alert-circle', title: 'Поиск не удался', text: error.message });
@@ -237,13 +363,13 @@
 
         document.getElementById('results-body').addEventListener('change', (event) => {
             if (event.target.id === 'select-all') {
-                document.querySelectorAll('.ch-checkbox').forEach((cb) => { cb.checked = event.target.checked; });
+                document.querySelectorAll('.ch-checkbox:not(:disabled)').forEach((cb) => { cb.checked = event.target.checked; });
             }
             updateSelection();
         });
 
         document.getElementById('btn-import-selected').addEventListener('click', async (event) => {
-            const selected = [...document.querySelectorAll('.ch-checkbox:checked')].map((cb) => parseInt(cb.value, 10));
+            const selected = [...document.querySelectorAll('.ch-checkbox:checked:not(:disabled)')].map((cb) => parseInt(cb.value, 10));
             if (!selected.length) {
                 UI.toast('Выберите хотя бы один канал', { type: 'warning' });
                 return;
@@ -252,6 +378,7 @@
             UI.setBusy(button, true, 'Импорт…');
             try {
                 const out = await api('/api/nvr/import-selected', { method: 'POST', json: { nvr: lastConfig, selected_channels: selected } });
+                await saveNvrSettings(lastConfig);
                 setStep(4);
                 UI.toast(`Добавлено ${out.imported_count} ${UI.plural(out.imported_count, ['камера', 'камеры', 'камер'])}. Переходим к списку…`, { title: 'Импорт завершён' });
                 setTimeout(() => { window.location.href = '/cameras'; }, 1200);
@@ -260,6 +387,7 @@
                 UI.setBusy(button, false);
             }
         });
+        loadSaved();
     })();
 </script>
 {% endblock %}

@@ -11,6 +11,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 router = APIRouter()
 
+# По умолчанию ffprobe анализирует живой RTSP-поток около 5 секунд, и рабочие каналы
+# не успевали ответить за таймаут поиска. Для проверки «есть ли поток и какой кодек»
+# хватает одной секунды анализа.
+PROBE_ARGS = ["-analyzeduration", "1000000", "-probesize", "1000000"]
+DISCOVER_TIMEOUT_SECONDS = 6
+TEST_TIMEOUT_SECONDS = 8
+
 def check_channel(k: int, req: NVRImportRequest) -> NVRChannelDiscovery:
     stream_path = nvr_stream_path(k, req.brand_preset, req.stream_profile)
     rtsp_url = public_rtsp_url(req.nvr_ip, req.nvr_rtsp_port, stream_path)
@@ -18,11 +25,11 @@ def check_channel(k: int, req: NVRImportRequest) -> NVRChannelDiscovery:
     
     try:
         cmd = [
-            "ffprobe", "-rtsp_transport", req.rtsp_transport, "-v", "error",
+            "ffprobe", "-rtsp_transport", req.rtsp_transport, "-v", "error", *PROBE_ARGS,
             "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1",
             probe_url
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=DISCOVER_TIMEOUT_SECONDS)
         if res.returncode == 0:
             return NVRChannelDiscovery(channel=k, rtsp_url=rtsp_url, status="online", codec=res.stdout.strip())
         else:
@@ -77,11 +84,11 @@ def test_connection(req: NVRImportRequest):
     # Run ffprobe to verify
     try:
         cmd = [
-            "ffprobe", "-rtsp_transport", "tcp", "-v", "error",
+            "ffprobe", "-rtsp_transport", "tcp", "-v", "error", *PROBE_ARGS,
             "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1",
             probe_url
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=TEST_TIMEOUT_SECONDS)
         
         if res.returncode == 0:
             return {"status": "success", "message": "NVR connection successful"}
