@@ -162,7 +162,13 @@ docker compose -f docker-compose.test.yml up -d --build
 http://localhost:4100
 ```
 
-В `docker-compose.test.yml` авторизация отключена (`AUTH_ENABLED=false`), чтобы smoke-тесты и тестовая панель запускались без логина. В обычном `docker-compose.yml` auth включен.
+Тестовая панель тоже защищена Basic Auth: логин и пароль `admin` / `admin` (переопределяются `ADMIN_USER` и `ADMIN_PASS`). Чтобы поднять её без логина:
+
+```bash
+TEST_AUTH_ENABLED=false docker compose -f docker-compose.test.yml up -d
+```
+
+Pytest-сервис `tests` работает без авторизации независимо от этой настройки.
 
 RTSP-потоки внутри тестовой сети имеют вид:
 
