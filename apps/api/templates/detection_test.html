@@ -7,7 +7,7 @@
 {% endcall %}
 
 <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
-    <form id="analysis-form" class="card" novalidate aria-labelledby="form-title">
+    <form id="analysis-form" class="card scroll-mt-20" novalidate aria-labelledby="form-title">
         <div class="card-header"><h2 class="card-title" id="form-title">{{ icon("flask", "icon-sm text-subtle") }}Новая проверка</h2></div>
         <div class="card-body space-y-5">
             <fieldset>
@@ -22,6 +22,7 @@
                 <label for="youtube-url" class="label">Ссылка на видео</label>
                 <input id="youtube-url" type="url" class="input" placeholder="https://www.youtube.com/watch?v=…" inputmode="url" autocomplete="off" spellcheck="false" aria-describedby="youtube-hint">
                 <p class="hint" id="youtube-hint">Только одно видео, плейлисты не загружаются. Серверу нужен доступ в интернет.</p>
+                <p class="hint flex items-start gap-1.5" id="cookies-status" hidden></p>
             </div>
 
             <div id="upload-fields" class="field" hidden>
@@ -101,7 +102,13 @@
                             <span class="text-fg font-semibold num"><span id="job-frames" class="text-subtle font-normal mr-2"></span><span id="job-percent">0%</span></span>
                         </div>
                     </div>
-                    <div id="job-error" class="alert alert-danger" role="alert" hidden>{{ icon("alert-circle") }}<p id="job-error-text" class="break-words"></p></div>
+                    <div id="job-error" class="alert alert-danger" role="alert" hidden>
+                        {{ icon("alert-circle") }}
+                        <div class="min-w-0">
+                            <p id="job-error-text" class="break-words whitespace-pre-line"></p>
+                            <button type="button" class="btn btn-secondary btn-sm mt-2.5" id="btn-use-upload" hidden>{{ icon("upload", "icon-sm") }}Загрузить видео файлом</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -224,6 +231,11 @@
                 const first = Object.entries(availableModels).find(([, model]) => model.available);
                 if (first) select.value = availableModels.general?.available ? 'general' : first[0];
                 document.getElementById('upload-limit').textContent = `MP4, MOV, AVI, MKV, WebM или M4V, до ${data.max_upload_mb} МБ и ${Math.floor(data.max_duration_seconds / 60)} мин.`;
+                const cookies = document.getElementById('cookies-status');
+                cookies.hidden = false;
+                cookies.innerHTML = data.youtube_cookies
+                    ? `<span class="text-success-fg inline-flex items-center gap-1.5">${icon('check-circle', 'icon-xs')}Cookies YouTube подключены: видео скачивается от имени аккаунта.</span>`
+                    : `${icon('info', 'icon-xs mt-0.5')}<span>Если YouTube попросит подтвердить, что вы не робот, загрузите видео файлом или подключите cookies аккаунта (README).</span>`;
                 updateModel();
             } catch (error) {
                 showFormError(error.message);
@@ -364,6 +376,7 @@
                 : '';
             document.getElementById('job-error').hidden = !job.error;
             document.getElementById('job-error-text').textContent = job.error || '';
+            document.getElementById('btn-use-upload').hidden = !(job.status === 'failed' && job.source_type === 'youtube');
 
             if (job.video_url) {
                 const video = document.getElementById('result-video');
@@ -543,6 +556,12 @@
 
         /* ---------- Обработчики ---------- */
         document.getElementById('source-seg').addEventListener('change', syncSource);
+        document.getElementById('btn-use-upload').addEventListener('click', () => {
+            document.querySelector('input[name="source"][value="upload"]').checked = true;
+            syncSource();
+            document.getElementById('analysis-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.getElementById('video-file').focus({ preventScroll: true });
+        });
         document.getElementById('analysis-form').addEventListener('submit', startAnalysis);
         document.getElementById('model-key').addEventListener('change', updateModel);
         document.getElementById('detector-checks').addEventListener('change', syncSelectAll);

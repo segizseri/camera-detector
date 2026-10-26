@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import cv2
 
+from libs import youtube
 from libs.config import settings
 from libs.database import Base, SessionLocal, engine
 from libs.models import DetectionTestJob
@@ -154,6 +155,7 @@ class DetectionTestRunner:
             self._update(job.id, input_path=str(input_path), stage="opening", progress=10.0)
         elif not input_path or not input_path.is_file():
             raise RuntimeError("Загруженное видео не найдено")
+        input_path = self._ensure_decodable(input_path)
 
         cap = cv2.VideoCapture(str(input_path))
         if not cap.isOpened():
@@ -400,28 +402,51 @@ class DetectionTestRunner:
         if not self._is_youtube_url(url):
             raise RuntimeError("Разрешены только YouTube-ссылки")
         output_template = str(job_dir / "source.%(ext)s")
-        command = [
-            "yt-dlp",
-            "--no-playlist",
-            "--no-progress",
-            "--max-filesize",
-            f"{settings.DETECTION_TEST_MAX_UPLOAD_MB}M",
-            "--match-filter",
-            f"duration <= {settings.DETECTION_TEST_MAX_DURATION_SECONDS}",
-            "-f",
-            "bv*[height<=720]/best[height<=720]/best",
-            "-o",
-            output_template,
-            url,
-        ]
+        cookies = youtube.cookies_file()
+        command = youtube.build_command(url, output_template, cookies)
         result = subprocess.run(command, capture_output=True, text=True, timeout=900)
+        output = f"{result.stdout or ''}\n{result.stderr or ''}"
         if result.returncode != 0:
-            detail = (result.stderr or result.stdout).strip().splitlines()
-            raise RuntimeError(detail[-1] if detail else "Не удалось скачать YouTube-видео")
+            raise RuntimeError(youtube.explain_error(output, cookies is not None))
         candidates = [path for path in job_dir.glob("source.*") if path.is_file()]
         if not candidates:
-            raise RuntimeError("yt-dlp не создал видеофайл")
+            # yt-dlp завершается без ошибки, если ролик не прошёл фильтр длительности или размера.
+            raise RuntimeError(youtube.explain_error(output, cookies is not None))
         return max(candidates, key=lambda path: path.stat().st_size)
+
+    @staticmethod
+    def _ensure_decodable(path: Path) -> Path:
+        """Видео, первый кадр которого OpenCV не читает (например, AV1), перекодируется в H.264."""
+        cap = cv2.VideoCapture(str(path))
+        readable = cap.isOpened() and cap.read()[0]
+        cap.release()
+        if readable:
+            return path
+
+        target = path.with_name("source_h264.mp4")
+        command = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(path),
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            str(target),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=3600)
+        if result.returncode != 0 or not target.is_file():
+            raise RuntimeError("Не удалось прочитать видео: кодек не поддерживается, а перекодирование в H.264 не удалось")
+        return target
 
     @staticmethod
     def _encode_preview(source: Path, target: Path):

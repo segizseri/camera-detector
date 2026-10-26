@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     DETECTION_TESTS_DIR: str = os.getenv("DETECTION_TESTS_DIR", "data/media/detection-tests")
     DETECTION_TEST_MAX_UPLOAD_MB: int = int(os.getenv("DETECTION_TEST_MAX_UPLOAD_MB", "1024"))
     DETECTION_TEST_MAX_DURATION_SECONDS: int = int(os.getenv("DETECTION_TEST_MAX_DURATION_SECONDS", "3600"))
+    # cookies.txt аккаунта YouTube для yt-dlp, если YouTube требует вход («not a bot»).
+    YOUTUBE_COOKIES_FILE: str = os.getenv("YOUTUBE_COOKIES_FILE", "data/youtube_cookies.txt")
 
     # YOLO-Pose input size and frame rate the ActionLSTM dataset is extracted with
     # (scripts/train_lstm.py --extract). Live cameras and detection tests must match,

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from libs import youtube
 from libs.config import settings
 from libs.database import get_db
 from libs.models import DetectionTestJob
@@ -199,6 +200,7 @@ def detection_test_system():
         "detectors": DETECTORS,
         "max_upload_mb": settings.DETECTION_TEST_MAX_UPLOAD_MB,
         "max_duration_seconds": settings.DETECTION_TEST_MAX_DURATION_SECONDS,
+        "youtube_cookies": youtube.cookies_file() is not None,
     }
 
 
